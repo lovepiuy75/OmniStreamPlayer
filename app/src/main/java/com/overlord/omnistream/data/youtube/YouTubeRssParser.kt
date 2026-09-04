@@ -13,11 +13,17 @@ import java.util.TimeZone
 import java.util.regex.Pattern
 import javax.xml.parsers.DocumentBuilderFactory
 
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+
 /**
  * YouTube 頻道 RSS Feed 偵測器：
  * 支援時間因子 (sinceTimestamp)，只加入指定時間後的新發布影片
  */
-class YouTubeRssParser(private val client: OkHttpClient = OkHttpClient()) {
+class YouTubeRssParser(
+    private val client: OkHttpClient = OkHttpClient(),
+    private val audioExtractor: YouTubeAudioExtractor = YouTubeAudioExtractor(client)
+) {
 
     companion object {
         private val CHANNEL_ID_PATTERN = Pattern.compile("UC[a-zA-Z0-9_-]{22}")
@@ -119,6 +125,20 @@ class YouTubeRssParser(private val client: OkHttpClient = OkHttpClient()) {
                     )
                 }
             }
+
+            // 併發預解析 RSS 音訊串流 URL
+            val deferred = items.map { item ->
+                async {
+                    val vid = item.id.removePrefix("yt_")
+                    val streamUrl = audioExtractor.extractAudioStreamUrl(vid)
+                    if (streamUrl != null) {
+                        item.copy(mediaUri = streamUrl)
+                    } else {
+                        item
+                    }
+                }
+            }
+            return@withContext deferred.awaitAll()
         } catch (e: Exception) {
             e.printStackTrace()
         }

@@ -8,6 +8,7 @@ import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
@@ -25,6 +26,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * 支援關閉螢幕背景播放的核心 Media3 前台服務
@@ -41,8 +43,12 @@ class OmniMediaSessionService : MediaSessionService() {
         super.onCreate()
         val app = applicationContext as OmniStreamApp
 
-        // 1. 配置支援 Bearer Token 注入與邊播邊緩存的 DataSource
+        // 1. 配置支援 Bearer Token 注入、YouTube 相容 User-Agent 與邊播邊緩存的 DataSource
         val httpDataSourceFactory = DefaultHttpDataSource.Factory()
+            .setUserAgent("com.google.android.youtube/21.26.364 (Linux; U; Android 11) gzip")
+            .setAllowCrossProtocolRedirects(true)
+            .setConnectTimeoutMs(15000)
+            .setReadTimeoutMs(15000)
             .setDefaultRequestProperties(
                 buildMap {
                     app.repository.gdriveService.currentAccessToken?.let {
@@ -69,7 +75,7 @@ class OmniMediaSessionService : MediaSessionService() {
             .setWakeMode(C.WAKE_MODE_NETWORK) // 鎖屏時保持網路與 CPU 運作
             .build()
 
-        // 3. 監聽播放進度以支援跨啟動斷點續播
+        // 3. 監聽播放進度以支援跨啟動斷點續播與 YouTube 串流自動續約
         exoPlayer.addListener(object : Player.Listener {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 saveCurrentPlaybackProgress()
@@ -81,6 +87,32 @@ class OmniMediaSessionService : MediaSessionService() {
                     startProgressTracker()
                 } else {
                     progressTrackerJob?.cancel()
+                }
+            }
+
+            override fun onPlayerError(error: PlaybackException) {
+                android.util.Log.w("OmniSessionService", "Player error: ${error.errorCodeName}, checking for YouTube refresh...", error)
+                val currentItem = exoPlayer.currentMediaItem ?: return
+                val currentId = currentItem.mediaId
+                if (currentId.startsWith("yt_")) {
+                    serviceScope.launch(Dispatchers.IO) {
+                        val vid = currentId.removePrefix("yt_")
+                        val freshInfo = app.repository.ytAudioExtractor.extractMediaInfo(vid)
+                        if (freshInfo != null) {
+                            app.repository.updateItemMediaUri(currentId, freshInfo.audioUrl)
+                            withContext(Dispatchers.Main) {
+                                val currentPos = exoPlayer.currentPosition.coerceAtLeast(0L)
+                                val updatedMediaItem = currentItem.buildUpon()
+                                    .setUri(freshInfo.audioUrl)
+                                    .build()
+                                val currentIndex = exoPlayer.currentMediaItemIndex
+                                exoPlayer.replaceMediaItem(currentIndex, updatedMediaItem)
+                                exoPlayer.seekTo(currentIndex, currentPos)
+                                exoPlayer.prepare()
+                                exoPlayer.play()
+                            }
+                        }
+                    }
                 }
             }
         })

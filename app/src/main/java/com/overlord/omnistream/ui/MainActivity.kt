@@ -27,6 +27,7 @@ import androidx.work.WorkManager
 import com.overlord.omnistream.OmniStreamApp
 import com.overlord.omnistream.data.gdrive.DriveFolderSyncWorker
 import com.overlord.omnistream.data.local.entity.SubscriptionEntity
+import com.overlord.omnistream.core.model.MediaSourceType
 import com.overlord.omnistream.playback.PlaybackController
 import com.overlord.omnistream.ui.components.MiniPlayerBar
 import com.overlord.omnistream.ui.screens.*
@@ -154,7 +155,32 @@ class MainActivity : ComponentActivity() {
                                 },
                                 items = playlist,
                                 onItemClick = { index ->
-                                    playbackController.playItemAtIndex(playlist, index)
+                                    val clicked = playlist[index]
+                                    if (clicked.sourceType == MediaSourceType.YOUTUBE || clicked.mediaUri.contains("youtube.com/watch")) {
+                                        lifecycleScope.launch(Dispatchers.IO) {
+                                            val vid = clicked.id.removePrefix("yt_")
+                                            val mediaInfo = repo.ytAudioExtractor.extractMediaInfo(vid)
+                                            val freshUrl = mediaInfo?.audioUrl
+                                            if (freshUrl != null) {
+                                                repo.updateItemMediaUri(clicked.id, freshUrl)
+                                                val updatedList = playlist.toMutableList()
+                                                updatedList[index] = clicked.copy(
+                                                    mediaUri = freshUrl,
+                                                    title = if (clicked.title.startsWith("YouTube 播放清單 #") || clicked.title.isBlank()) mediaInfo.title else clicked.title,
+                                                    artist = if (clicked.artist == "YouTube 播放清單") mediaInfo.author else clicked.artist
+                                                )
+                                                withContext(Dispatchers.Main) {
+                                                    playbackController.playItemAtIndex(updatedList, index)
+                                                }
+                                            } else {
+                                                withContext(Dispatchers.Main) {
+                                                    playbackController.playItemAtIndex(playlist, index)
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        playbackController.playItemAtIndex(playlist, index)
+                                    }
                                 },
                                 onDeleteItem = { id ->
                                     lifecycleScope.launch(Dispatchers.IO) { repo.removeItemFromPlaylist(id) }

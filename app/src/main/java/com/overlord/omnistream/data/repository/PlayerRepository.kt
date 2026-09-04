@@ -70,6 +70,14 @@ class PlayerRepository(
         playlistDao.clearGroup(groupId)
     }
 
+    suspend fun updateItemMediaUri(id: String, mediaUri: String) {
+        playlistDao.updateMediaUri(id, mediaUri)
+    }
+
+    suspend fun updateItemDetails(id: String, title: String, artist: String, mediaUri: String) {
+        playlistDao.updateItemDetails(id, title, artist, mediaUri)
+    }
+
     // 本機音訊掃描 (MediaStore)
     suspend fun scanLocalAudioFiles(): List<PlaylistItem> = withContext(Dispatchers.IO) {
         val list = mutableListOf<PlaylistItem>()

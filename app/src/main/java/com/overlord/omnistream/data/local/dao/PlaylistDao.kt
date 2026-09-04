@@ -35,4 +35,10 @@ interface PlaylistDao {
 
     @Query("SELECT MAX(sortOrder) FROM playlist_items WHERE playlistGroupId = :groupId")
     suspend fun getMaxSortOrder(groupId: String): Int?
+
+    @Query("UPDATE playlist_items SET mediaUri = :mediaUri WHERE id = :id")
+    suspend fun updateMediaUri(id: String, mediaUri: String)
+
+    @Query("UPDATE playlist_items SET title = :title, artist = :artist, mediaUri = :mediaUri WHERE id = :id")
+    suspend fun updateItemDetails(id: String, title: String, artist: String, mediaUri: String)
 }
