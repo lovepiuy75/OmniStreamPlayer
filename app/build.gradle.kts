@@ -87,4 +87,7 @@ dependencies {
 
     // JSON parsing
     implementation("org.json:json:20231013")
+
+    // Testing
+    testImplementation("junit:junit:4.13.2")
 }
