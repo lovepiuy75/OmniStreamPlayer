@@ -32,7 +32,7 @@ class YouTubeRssParser(private val client: OkHttpClient = OkHttpClient()) {
             val doc = builder.parse(ByteArrayInputStream(xmlData.toByteArray()))
             val entryNodes = doc.getElementsByTagName("entry")
 
-            for (i in 0 until entryNodes.length()) {
+            for (i in 0 until entryNodes.length) {
                 val entry = entryNodes.item(i)
                 val children = entry.childNodes
                 var videoId: String? = null

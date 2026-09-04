@@ -43,7 +43,6 @@ class OmniMediaSessionService : MediaSessionService() {
 
         // 1. 配置支援 Bearer Token 注入與邊播邊緩存的 DataSource
         val httpDataSourceFactory = DefaultHttpDataSource.Factory()
-            .setAllowCrossProtocolRedirect(true)
             .setDefaultRequestProperties(
                 buildMap {
                     app.repository.gdriveService.currentAccessToken?.let {
