@@ -22,15 +22,16 @@ class PlayerRepository(
     private val context: Context,
     private val database: AppDatabase
 ) {
-    val gdriveService = GoogleDriveService()
-    val ytRssParser = YouTubeRssParser()
-    val ytPlaylistParser = YouTubePlaylistParser()
-    val ytAudioExtractor = YouTubeAudioExtractor()
+    val gdriveService by lazy { GoogleDriveService() }
+    val ytRssParser by lazy { YouTubeRssParser() }
+    val ytPlaylistParser by lazy { YouTubePlaylistParser() }
+    val ytAudioExtractor by lazy { YouTubeAudioExtractor() }
 
-    private val playlistDao = database.playlistDao()
-    private val groupDao = database.playlistGroupDao()
-    private val playbackStateDao = database.playbackStateDao()
-    private val subscriptionDao = database.subscriptionDao()
+    val playlistDao by lazy { database.playlistDao() }
+    val groupDao by lazy { database.playlistGroupDao() }
+    val playbackStateDao by lazy { database.playbackStateDao() }
+    val subscriptionDao by lazy { database.subscriptionDao() }
+
 
     // 播放清單群組
     fun getPlaylistGroupsFlow(): Flow<List<PlaylistGroupEntity>> = groupDao.getAllFlow()

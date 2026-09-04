@@ -50,5 +50,32 @@ class CrashHandler private constructor(private val context: Context) : Thread.Un
         fun init(context: Context) {
             Thread.setDefaultUncaughtExceptionHandler(CrashHandler(context.applicationContext))
         }
+
+        fun showCrash(context: Context, throwable: Throwable) {
+            val sw = StringWriter()
+            val pw = PrintWriter(sw)
+            throwable.printStackTrace(pw)
+            val stackTrace = sw.toString()
+            Log.e("OmniStreamCrash", "FATAL EXCEPTION:\n$stackTrace")
+
+            val deviceInfo = "設備: ${Build.MANUFACTURER} ${Build.MODEL}\n系統: Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})"
+
+            try {
+                val crashFile = File(context.filesDir, "last_crash.txt")
+                crashFile.writeText("$deviceInfo\n\n$stackTrace")
+            } catch (e: Exception) {}
+
+            try {
+                val intent = Intent(context, CrashActivity::class.java).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                    putExtra("CRASH_INFO", stackTrace)
+                    putExtra("DEVICE_INFO", deviceInfo)
+                }
+                context.startActivity(intent)
+                Process.killProcess(Process.myPid())
+                System.exit(10)
+            } catch (e: Exception) {}
+        }
     }
 }
+

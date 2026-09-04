@@ -9,11 +9,13 @@ import com.overlord.omnistream.data.repository.PlayerRepository
 
 class OmniStreamApp : Application() {
 
-    lateinit var database: AppDatabase
-        private set
+    val database: AppDatabase by lazy {
+        AppDatabase.getInstance(this)
+    }
 
-    lateinit var repository: PlayerRepository
-        private set
+    val repository: PlayerRepository by lazy {
+        PlayerRepository(this, database)
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -22,17 +24,14 @@ class OmniStreamApp : Application() {
         // 0. 安裝全域崩潰攔截器 (防止靜默閃退，提供可視化診斷介面)
         CrashHandler.init(this)
 
+        // 1. 安全預熱快取與資料庫，若發生未預期異常立即喚起 CrashActivity 呈現真實根因
         try {
-            // 1. 初始化資料庫
-            database = AppDatabase.getInstance(this)
-
-            // 2. 初始化儲存庫
-            repository = PlayerRepository(this, database)
-
-            // 3. 初始化 ExoPlayer 快取管理器（邊播邊快取，LRU 磁碟緩存）
+            database
+            repository
             MediaCacheManager.init(this)
         } catch (t: Throwable) {
-            Log.e("OmniStreamApp", "Fatal initialization error caught safely", t)
+            Log.e("OmniStreamApp", "Fatal initialization error during startup", t)
+            CrashHandler.showCrash(this, t)
         }
     }
 
@@ -41,4 +40,5 @@ class OmniStreamApp : Application() {
             private set
     }
 }
+
 

@@ -30,8 +30,9 @@ abstract class AppDatabase : RoomDatabase() {
 
         fun getInstance(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
+                val appContext = context.applicationContext ?: context
                 val instance = Room.databaseBuilder(
-                    context.applicationContext,
+                    appContext,
                     AppDatabase::class.java,
                     "omnistream_database.db"
                 )
@@ -43,3 +44,4 @@ abstract class AppDatabase : RoomDatabase() {
         }
     }
 }
+
