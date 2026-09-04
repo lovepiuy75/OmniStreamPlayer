@@ -19,7 +19,7 @@ class GoogleDriveService(private val client: OkHttpClient = OkHttpClient()) {
     var currentAccessToken: String? = null
 
     companion object {
-        private val FOLDER_ID_PATTERN = Pattern.compile("(?:folders/|id=)?([a-zA-Z0-9_-]{25,})")
+        private val FOLDER_ID_PATTERN = Pattern.compile("(?:folders/|[?&]id=)([a-zA-Z0-9_-]{25,})")
 
         /**
           * 從完整網址或純文字中精準提取 Google Drive Folder ID

@@ -17,7 +17,7 @@ import java.util.regex.Pattern
 class YouTubePlaylistParser(private val client: OkHttpClient = OkHttpClient()) {
 
     companion object {
-        private val PLAYLIST_ID_PATTERN = Pattern.compile("(?:[?&]list=|^list=)?([a-zA-Z0-9_-]+)")
+        private val PLAYLIST_ID_PATTERN = Pattern.compile("[?&]list=([a-zA-Z0-9_-]+)")
 
         fun extractPlaylistId(input: String): String {
             val trimmed = input.trim()
