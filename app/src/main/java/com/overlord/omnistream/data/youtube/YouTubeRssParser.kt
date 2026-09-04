@@ -20,7 +20,7 @@ import javax.xml.parsers.DocumentBuilderFactory
 class YouTubeRssParser(private val client: OkHttpClient = OkHttpClient()) {
 
     companion object {
-        private val CHANNEL_ID_PATTERN = Pattern.compile("(?<=channel/|/c/|/user/|@)?UC[a-zA-Z0-9_-]{22}")
+        private val CHANNEL_ID_PATTERN = Pattern.compile("UC[a-zA-Z0-9_-]{22}")
 
         fun extractChannelId(input: String): String {
             val trimmed = input.trim()
@@ -34,7 +34,31 @@ class YouTubeRssParser(private val client: OkHttpClient = OkHttpClient()) {
         channelName: String,
         sinceTimestamp: Long? = null
     ): List<PlaylistItem> = withContext(Dispatchers.IO) {
-        val channelId = extractChannelId(channelIdOrUrl)
+        var channelId = extractChannelId(channelIdOrUrl)
+
+        // 若輸入為 @handle 或自訂網址，自動從頻道頁面 HTML 解析出正式 UC 開頭 channelId
+        if (!channelId.startsWith("UC")) {
+            val handleUrl = if (channelIdOrUrl.startsWith("http")) {
+                channelIdOrUrl
+            } else {
+                "https://www.youtube.com/${if (channelIdOrUrl.startsWith("@")) "" else "@"}$channelIdOrUrl"
+            }
+            try {
+                val handleRequest = Request.Builder()
+                    .url(handleUrl)
+                    .header("User-Agent", "Mozilla/5.0")
+                    .build()
+                val handleResp = client.newCall(handleRequest).execute()
+                val handleHtml = handleResp.body?.string() ?: ""
+                val m = CHANNEL_ID_PATTERN.matcher(handleHtml)
+                if (m.find()) {
+                    channelId = m.group()
+                }
+            } catch (e: Exception) {
+                // Ignore fallback to raw channelId
+            }
+        }
+
         val url = "https://www.youtube.com/feeds/videos.xml?channel_id=$channelId"
         val request = Request.Builder().url(url).build()
         val items = mutableListOf<PlaylistItem>()

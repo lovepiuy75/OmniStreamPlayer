@@ -17,12 +17,16 @@ import java.util.regex.Pattern
 class YouTubePlaylistParser(private val client: OkHttpClient = OkHttpClient()) {
 
     companion object {
-        private val PLAYLIST_ID_PATTERN = Pattern.compile("(?<=list=)[a-zA-Z0-9_-]+")
+        private val PLAYLIST_ID_PATTERN = Pattern.compile("(?:[?&]list=|^list=)?([a-zA-Z0-9_-]+)")
 
         fun extractPlaylistId(input: String): String {
             val trimmed = input.trim()
             val matcher = PLAYLIST_ID_PATTERN.matcher(trimmed)
-            return if (matcher.find()) matcher.group() else trimmed.substringBefore("&")
+            return if (matcher.find()) {
+                matcher.group(1) ?: matcher.group()
+            } else {
+                trimmed.substringBefore("&")
+            }
         }
     }
 
