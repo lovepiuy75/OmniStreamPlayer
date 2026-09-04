@@ -45,8 +45,7 @@ fun PlaylistScreen(
         if (items.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(
-                    text = "目前清單為空
-請至雲端、YouTube 或本機加入音訊",
+                    text = "目前清單為空\n請至雲端、YouTube 或本機加入音訊",
                     color = TextSecondary,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center
                 )
