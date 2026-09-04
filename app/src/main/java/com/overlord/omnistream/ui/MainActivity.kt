@@ -3,7 +3,13 @@ package com.overlord.omnistream.ui
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cloud
@@ -64,35 +70,69 @@ class MainActivity : ComponentActivity() {
                 val isPlaying by playbackController.isPlaying.collectAsState()
                 val currentItem by playbackController.currentMediaItem.collectAsState()
 
+                // 當全螢幕播放器開啟時，按 Android 返回鍵收合播放器回到當前分頁，避免退出 App
+                BackHandler(enabled = showFullPlayer) {
+                    showFullPlayer = false
+                }
+
                 Scaffold(
                     bottomBar = {
                         Column {
-                            MiniPlayerBar(
-                                controller = playbackController,
-                                isPlaying = isPlaying,
-                                title = currentItem?.mediaMetadata?.title?.toString() ?: "",
-                                artist = currentItem?.mediaMetadata?.artist?.toString() ?: "",
-                                onClick = { showFullPlayer = true }
-                            )
+                            if (!showFullPlayer) {
+                                MiniPlayerBar(
+                                    controller = playbackController,
+                                    isPlaying = isPlaying,
+                                    title = currentItem?.mediaMetadata?.title?.toString() ?: "",
+                                    artist = currentItem?.mediaMetadata?.artist?.toString() ?: "",
+                                    onClick = { showFullPlayer = true }
+                                )
+                            }
 
                             NavigationBar(containerColor = BgDark) {
                                 NavigationBarItem(
-                                    selected = selectedTab == 0,
-                                    onClick = { selectedTab = 0 },
+                                    selected = selectedTab == 0 && !showFullPlayer,
+                                    onClick = {
+                                        selectedTab = 0
+                                        showFullPlayer = false
+                                    },
                                     icon = { Icon(Icons.Default.QueueMusic, contentDescription = "播放清單") },
-                                    label = { Text("清單") }
+                                    label = { Text("清單") },
+                                    colors = NavigationBarItemDefaults.colors(
+                                        selectedIconColor = CyanAccent,
+                                        selectedTextColor = CyanAccent,
+                                        unselectedIconColor = TextSecondary,
+                                        unselectedTextColor = TextSecondary
+                                    )
                                 )
                                 NavigationBarItem(
-                                    selected = selectedTab == 1,
-                                    onClick = { selectedTab = 1 },
+                                    selected = selectedTab == 1 && !showFullPlayer,
+                                    onClick = {
+                                        selectedTab = 1
+                                        showFullPlayer = false
+                                    },
                                     icon = { Icon(Icons.Default.Cloud, contentDescription = "雲端硬碟") },
-                                    label = { Text("Google 雲端") }
+                                    label = { Text("Google 雲端") },
+                                    colors = NavigationBarItemDefaults.colors(
+                                        selectedIconColor = CyanAccent,
+                                        selectedTextColor = CyanAccent,
+                                        unselectedIconColor = TextSecondary,
+                                        unselectedTextColor = TextSecondary
+                                    )
                                 )
                                 NavigationBarItem(
-                                    selected = selectedTab == 2,
-                                    onClick = { selectedTab = 2 },
+                                    selected = selectedTab == 2 && !showFullPlayer,
+                                    onClick = {
+                                        selectedTab = 2
+                                        showFullPlayer = false
+                                    },
                                     icon = { Icon(Icons.Default.VideoLibrary, contentDescription = "YouTube") },
-                                    label = { Text("YouTube") }
+                                    label = { Text("YouTube") },
+                                    colors = NavigationBarItemDefaults.colors(
+                                        selectedIconColor = CyanAccent,
+                                        selectedTextColor = CyanAccent,
+                                        unselectedIconColor = TextSecondary,
+                                        unselectedTextColor = TextSecondary
+                                    )
                                 )
                             }
                         }
@@ -103,6 +143,7 @@ class MainActivity : ComponentActivity() {
                             0 -> PlaylistScreen(
                                 groups = groups,
                                 selectedGroupId = currentGroupId,
+                                currentPlayingId = currentItem?.mediaId,
                                 onSelectGroup = { currentGroupId = it },
                                 onCreateGroup = { name ->
                                     lifecycleScope.launch(Dispatchers.IO) {
@@ -113,7 +154,7 @@ class MainActivity : ComponentActivity() {
                                 },
                                 items = playlist,
                                 onItemClick = { index ->
-                                    playbackController.setPlaylistAndPlay(playlist, startIndex = index)
+                                    playbackController.playItemAtIndex(playlist, index)
                                 },
                                 onDeleteItem = { id ->
                                     lifecycleScope.launch(Dispatchers.IO) { repo.removeItemFromPlaylist(id) }
@@ -204,7 +245,11 @@ class MainActivity : ComponentActivity() {
                             )
                         }
 
-                        if (showFullPlayer) {
+                        AnimatedVisibility(
+                            visible = showFullPlayer,
+                            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+                            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
+                        ) {
                             PlayerScreen(
                                 controller = playbackController,
                                 title = currentItem?.mediaMetadata?.title?.toString() ?: "",

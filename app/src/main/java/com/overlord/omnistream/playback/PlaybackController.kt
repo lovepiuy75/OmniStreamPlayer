@@ -178,6 +178,21 @@ class PlaybackController(private val context: Context) {
     fun skipToNext() = runOnMainThread { mediaController?.seekToNextMediaItem() }
     fun skipToPrevious() = runOnMainThread { mediaController?.seekToPreviousMediaItem() }
 
+    fun playItemAtIndex(items: List<PlaylistItem>, index: Int) {
+        runOnMainThread {
+            val controller = mediaController ?: return@runOnMainThread
+            if (controller.mediaItemCount == items.size && index < items.size) {
+                val targetId = items[index].id
+                if (controller.getMediaItemAt(index).mediaId == targetId) {
+                    controller.seekToDefaultPosition(index)
+                    controller.play()
+                    return@runOnMainThread
+                }
+            }
+            setPlaylistAndPlay(items, startIndex = index)
+        }
+    }
+
     fun setPlaylistAndPlay(items: List<PlaylistItem>, startIndex: Int = 0, startPositionMs: Long = 0L) {
         runOnMainThread {
             val controller = mediaController ?: return@runOnMainThread

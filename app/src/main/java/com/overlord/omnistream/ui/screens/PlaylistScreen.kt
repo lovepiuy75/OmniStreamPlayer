@@ -20,6 +20,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.border
+import androidx.compose.material.icons.filled.VolumeUp
 import com.overlord.omnistream.core.model.MediaSourceType
 import com.overlord.omnistream.core.model.PlaylistItem
 import com.overlord.omnistream.data.local.entity.PlaylistGroupEntity
@@ -29,6 +31,7 @@ import com.overlord.omnistream.ui.theme.*
 fun PlaylistScreen(
     groups: List<PlaylistGroupEntity>,
     selectedGroupId: String,
+    currentPlayingId: String? = null,
     onSelectGroup: (String) -> Unit,
     onCreateGroup: (name: String) -> Unit,
     items: List<PlaylistItem>,
@@ -142,6 +145,7 @@ fun PlaylistScreen(
                     PlaylistItemRow(
                         item = item,
                         index = index + 1,
+                        isPlaying = (item.id == currentPlayingId),
                         onClick = { onItemClick(index) },
                         onDelete = { onDeleteItem(item.id) }
                     )
@@ -191,6 +195,7 @@ fun PlaylistScreen(
 fun PlaylistItemRow(
     item: PlaylistItem,
     index: Int,
+    isPlaying: Boolean = false,
     onClick: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -198,28 +203,52 @@ fun PlaylistItemRow(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
-            .background(CardDark)
+            .then(
+                if (isPlaying) Modifier.border(1.dp, CyanAccent, RoundedCornerShape(8.dp))
+                else Modifier
+            )
+            .background(if (isPlaying) SurfaceDark else CardDark)
             .clickable { onClick() }
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = "$index",
-            color = TextSecondary,
-            fontSize = 14.sp,
-            modifier = Modifier.width(28.dp)
-        )
+        if (isPlaying) {
+            Icon(
+                imageVector = Icons.Default.VolumeUp,
+                contentDescription = "播放中",
+                tint = CyanAccent,
+                modifier = Modifier
+                    .width(28.dp)
+                    .size(20.dp)
+            )
+        } else {
+            Text(
+                text = "$index",
+                color = TextSecondary,
+                fontSize = 14.sp,
+                modifier = Modifier.width(28.dp)
+            )
+        }
 
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = item.title,
-                color = TextPrimary,
+                color = if (isPlaying) CyanAccent else TextPrimary,
                 fontSize = 15.sp,
-                fontWeight = FontWeight.Medium,
+                fontWeight = if (isPlaying) FontWeight.Bold else FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
+                if (isPlaying) {
+                    Text(
+                        text = "[播放中]",
+                        color = CyanAccent,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                }
                 val (badgeColor, badgeText) = when (item.sourceType) {
                     MediaSourceType.LOCAL -> AmberAccent to "本機"
                     MediaSourceType.GDRIVE -> CyanAccent to "雲端"

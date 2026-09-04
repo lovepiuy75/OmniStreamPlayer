@@ -62,28 +62,42 @@ fun PlayerScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.SpaceBetween
     ) {
-        // 頂部導航列：關閉/下滑按鈕與「正在播放」標籤
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+        // 頂部下拉拖曳條與導航列（點擊任意處均可收合）
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onClose() }
         ) {
-            IconButton(onClick = onClose) {
-                Icon(
-                    imageVector = Icons.Default.KeyboardArrowDown,
-                    contentDescription = "收合播放器",
-                    tint = TextPrimary,
-                    modifier = Modifier.size(32.dp)
-                )
-            }
-            Text(
-                text = "正在播放",
-                color = TextSecondary,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium
+            Box(
+                modifier = Modifier
+                    .width(44.dp)
+                    .height(5.dp)
+                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(3.dp))
+                    .background(TextSecondary.copy(alpha = 0.5f))
             )
-            // 佔位以保持居中平衡
-            Spacer(modifier = Modifier.size(32.dp))
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onClose) {
+                    Icon(
+                        imageVector = Icons.Default.KeyboardArrowDown,
+                        contentDescription = "收合播放器",
+                        tint = CyanAccent,
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
+                Text(
+                    text = "正在播放（點此收合回清單）",
+                    color = TextSecondary,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                Spacer(modifier = Modifier.size(32.dp))
+            }
         }
 
         // 封面唱盤視覺（霸王色 Tactical 圓環風格）
