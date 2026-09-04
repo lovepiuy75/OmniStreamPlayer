@@ -34,6 +34,14 @@
             </intent-filter>
         </activity>
 
+        <!-- 崩潰診斷獨立 Activity (運行於獨立進程，保證主進程崩潰時仍能穩定呈現錯誤追蹤) -->
+        <activity
+            android:name=".ui.CrashActivity"
+            android:exported="false"
+            android:process=":crash"
+            android:theme="@android:style/Theme.DeviceDefault.NoActionBar" />
+
+
         <!-- Media3 MediaSessionService 前台服務宣告 -->
         <service
             android:name=".playback.OmniMediaSessionService"

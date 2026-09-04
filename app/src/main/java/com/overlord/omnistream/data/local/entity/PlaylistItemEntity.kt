@@ -21,19 +21,21 @@ data class PlaylistItemEntity(
     val playlistGroupId: String = "default"      // 歸屬的播放清單群組
 ) {
     fun toDomain(): PlaylistItem {
+        val safeType = runCatching { MediaSourceType.valueOf(sourceType) }.getOrDefault(MediaSourceType.LOCAL)
         return PlaylistItem(
             id = id,
             title = title,
             artist = artist,
             durationMs = durationMs,
             mediaUri = mediaUri,
-            sourceType = MediaSourceType.valueOf(sourceType),
+            sourceType = safeType,
             artworkUri = artworkUri,
             driveFolderId = driveFolderId,
             ytChannelId = ytChannelId,
             addedTime = addedTime
         )
     }
+
 
     companion object {
         fun fromDomain(item: PlaylistItem, sortOrder: Int, groupId: String = "default"): PlaylistItemEntity {

@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material3.*
@@ -24,7 +25,6 @@ import com.overlord.omnistream.core.model.PlaylistItem
 import com.overlord.omnistream.data.local.entity.PlaylistGroupEntity
 import com.overlord.omnistream.ui.theme.*
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlaylistScreen(
     groups: List<PlaylistGroupEntity>,
@@ -48,31 +48,46 @@ fun PlaylistScreen(
             .background(BgDark)
             .padding(16.dp)
     ) {
-        // 頂部多清單切換選單與操作列
+        // 頂部多清單切換選單與操作列 (穩定版 Box + DropdownMenu，杜絕 M3 實驗性 API 簽名不相容閃退)
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            ExposedDropdownMenuBox(
-                expanded = isDropdownExpanded,
-                onExpandedChange = { isDropdownExpanded = !isDropdownExpanded },
-                modifier = Modifier.weight(1f)
-            ) {
-                OutlinedTextField(
-                    value = "$currentGroupName (${items.size})",
-                    onValueChange = {},
-                    readOnly = true,
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = isDropdownExpanded) },
-                    colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
-                    modifier = Modifier.menuAnchor()
-                )
-                ExposedDropdownMenu(
+            Box(modifier = Modifier.weight(1f)) {
+                OutlinedCard(
+                    onClick = { isDropdownExpanded = true },
+                    colors = CardDefaults.outlinedCardColors(containerColor = CardDark),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "$currentGroupName (${items.size})",
+                            color = TextPrimary,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Icon(
+                            imageVector = Icons.Default.ArrowDropDown,
+                            contentDescription = "選擇清單",
+                            tint = CyanAccent
+                        )
+                    }
+                }
+
+                DropdownMenu(
                     expanded = isDropdownExpanded,
-                    onDismissRequest = { isDropdownExpanded = false }
+                    onDismissRequest = { isDropdownExpanded = false },
+                    modifier = Modifier.background(CardDark)
                 ) {
                     DropdownMenuItem(
-                        text = { Text("預設清單") },
+                        text = { Text("預設清單", color = TextPrimary) },
                         onClick = {
                             onSelectGroup("default")
                             isDropdownExpanded = false
@@ -80,14 +95,14 @@ fun PlaylistScreen(
                     )
                     groups.forEach { group ->
                         DropdownMenuItem(
-                            text = { Text(group.name) },
+                            text = { Text(group.name, color = TextPrimary) },
                             onClick = {
                                 onSelectGroup(group.id)
                                 isDropdownExpanded = false
                             }
                         )
                     }
-                    Divider()
+                    Divider(color = SurfaceDark)
                     DropdownMenuItem(
                         text = { Text("＋ 新增播放清單...", color = CyanAccent) },
                         onClick = {

@@ -221,36 +221,47 @@ class MainActivity : ComponentActivity() {
 
     private fun restorePreviousPlaybackState(repo: com.overlord.omnistream.data.repository.PlayerRepository) {
         lifecycleScope.launch(Dispatchers.IO) {
-            val lastState = repo.getPlaybackState()
-            val playlist = repo.getPlaylistItems("default")
+            try {
+                val lastState = repo.getPlaybackState()
+                val playlist = repo.getPlaylistItems("default")
 
-            if (lastState != null && playlist.isNotEmpty()) {
-                val index = playlist.indexOfFirst { it.id == lastState.currentItemId }.coerceAtLeast(0)
-                playbackController.setPlaylistAndPlay(
-                    items = playlist,
-                    startIndex = index,
-                    startPositionMs = lastState.currentPositionMs
-                )
-                playbackController.pause()
+                if (lastState != null && playlist.isNotEmpty()) {
+                    val index = playlist.indexOfFirst { it.id == lastState.currentItemId }.coerceAtLeast(0)
+                    withContext(Dispatchers.Main) {
+                        playbackController.setPlaylistAndPlay(
+                            items = playlist,
+                            startIndex = index,
+                            startPositionMs = lastState.currentPositionMs
+                        )
+                        playbackController.pause()
+                    }
+                }
+            } catch (e: Throwable) {
+                android.util.Log.e("MainActivity", "Failed to restore playback state", e)
             }
         }
     }
 
     private fun scheduleDriveBackgroundSync() {
-        val constraints = Constraints.Builder()
-            .setRequiredNetworkType(NetworkType.CONNECTED)
-            .build()
+        try {
+            val constraints = Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .build()
 
-        val syncRequest = PeriodicWorkRequestBuilder<DriveFolderSyncWorker>(
-            4, TimeUnit.HOURS
-        ).setConstraints(constraints).build()
+            val syncRequest = PeriodicWorkRequestBuilder<DriveFolderSyncWorker>(
+                4, TimeUnit.HOURS
+            ).setConstraints(constraints).build()
 
-        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
-            "OmniDriveFolderSync",
-            ExistingPeriodicWorkPolicy.KEEP,
-            syncRequest
-        )
+            WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+                "OmniDriveFolderSync",
+                ExistingPeriodicWorkPolicy.KEEP,
+                syncRequest
+            )
+        } catch (e: Throwable) {
+            android.util.Log.e("MainActivity", "Failed to schedule drive sync worker", e)
+        }
     }
+
 
     override fun onDestroy() {
         playbackController.release()
