@@ -7,6 +7,7 @@ import android.os.Looper
 import android.util.Log
 import androidx.annotation.OptIn
 import androidx.core.content.ContextCompat
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
@@ -42,6 +43,38 @@ class PlaybackController(private val context: Context) {
     private val _durationMs = MutableStateFlow(0L)
     val durationMs = _durationMs.asStateFlow()
 
+    private val progressRunnable = object : Runnable {
+        override fun run() {
+            val controller = mediaController
+            if (controller != null) {
+                _currentPositionMs.value = controller.currentPosition.coerceAtLeast(0L)
+                val dur = controller.duration
+                if (dur > 0L && dur != C.TIME_UNSET) {
+                    _durationMs.value = dur
+                }
+                if (controller.isPlaying) {
+                    mainHandler.postDelayed(this, 250L)
+                }
+            }
+        }
+    }
+
+    private fun startProgressUpdates() {
+        mainHandler.removeCallbacks(progressRunnable)
+        mainHandler.post(progressRunnable)
+    }
+
+    private fun stopProgressUpdates() {
+        mainHandler.removeCallbacks(progressRunnable)
+        mediaController?.let { controller ->
+            _currentPositionMs.value = controller.currentPosition.coerceAtLeast(0L)
+            val dur = controller.duration
+            if (dur > 0L && dur != C.TIME_UNSET) {
+                _durationMs.value = dur
+            }
+        }
+    }
+
     fun connect(onConnected: () -> Unit = {}) {
         try {
             val sessionToken = SessionToken(
@@ -67,19 +100,41 @@ class PlaybackController(private val context: Context) {
         val controller = mediaController ?: return
         _isPlaying.value = controller.isPlaying
         _currentMediaItem.value = controller.currentMediaItem
+        val dur = controller.duration
+        if (dur > 0L && dur != C.TIME_UNSET) {
+            _durationMs.value = dur
+        }
+        _currentPositionMs.value = controller.currentPosition.coerceAtLeast(0L)
+        if (controller.isPlaying) {
+            startProgressUpdates()
+        }
 
         controller.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 _isPlaying.value = isPlaying
+                if (isPlaying) {
+                    startProgressUpdates()
+                } else {
+                    stopProgressUpdates()
+                }
             }
 
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 _currentMediaItem.value = mediaItem
-                _durationMs.value = controller.duration.coerceAtLeast(0L)
+                val dur = controller.duration
+                _durationMs.value = if (dur > 0L && dur != C.TIME_UNSET) dur else 0L
+                _currentPositionMs.value = controller.currentPosition.coerceAtLeast(0L)
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
-                _durationMs.value = controller.duration.coerceAtLeast(0L)
+                val dur = controller.duration
+                if (dur > 0L && dur != C.TIME_UNSET) {
+                    _durationMs.value = dur
+                }
+                _currentPositionMs.value = controller.currentPosition.coerceAtLeast(0L)
+                if (playbackState == Player.STATE_READY && controller.isPlaying) {
+                    startProgressUpdates()
+                }
             }
         })
     }
@@ -94,7 +149,32 @@ class PlaybackController(private val context: Context) {
 
     fun play() = runOnMainThread { mediaController?.play() }
     fun pause() = runOnMainThread { mediaController?.pause() }
-    fun seekTo(positionMs: Long) = runOnMainThread { mediaController?.seekTo(positionMs) }
+
+    fun seekTo(positionMs: Long) = runOnMainThread {
+        val controller = mediaController ?: return@runOnMainThread
+        val dur = controller.duration
+        val target = if (dur > 0L && dur != C.TIME_UNSET) {
+            positionMs.coerceIn(0L, dur)
+        } else {
+            positionMs.coerceAtLeast(0L)
+        }
+        _currentPositionMs.value = target
+        controller.seekTo(target)
+    }
+
+    fun seekRelative(offsetMs: Long) = runOnMainThread {
+        val controller = mediaController ?: return@runOnMainThread
+        val current = controller.currentPosition.coerceAtLeast(0L)
+        val dur = controller.duration
+        val target = if (dur > 0L && dur != C.TIME_UNSET) {
+            (current + offsetMs).coerceIn(0L, dur)
+        } else {
+            (current + offsetMs).coerceAtLeast(0L)
+        }
+        _currentPositionMs.value = target
+        controller.seekTo(target)
+    }
+
     fun skipToNext() = runOnMainThread { mediaController?.seekToNextMediaItem() }
     fun skipToPrevious() = runOnMainThread { mediaController?.seekToPreviousMediaItem() }
 
@@ -113,6 +193,7 @@ class PlaybackController(private val context: Context) {
                     )
                     .build()
             }
+            _currentPositionMs.value = startPositionMs
             controller.setMediaItems(mediaItems, startIndex, startPositionMs)
             controller.prepare()
             controller.play()
@@ -121,6 +202,7 @@ class PlaybackController(private val context: Context) {
 
     fun release() {
         runOnMainThread {
+            stopProgressUpdates()
             controllerFuture?.let { MediaController.releaseFuture(it) }
         }
     }
