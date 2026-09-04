@@ -17,7 +17,8 @@ data class PlaylistItemEntity(
     val driveFolderId: String?,
     val ytChannelId: String?,
     val sortOrder: Int,
-    val addedTime: Long
+    val addedTime: Long,
+    val playlistGroupId: String = "default"      // 歸屬的播放清單群組
 ) {
     fun toDomain(): PlaylistItem {
         return PlaylistItem(
@@ -35,7 +36,7 @@ data class PlaylistItemEntity(
     }
 
     companion object {
-        fun fromDomain(item: PlaylistItem, sortOrder: Int): PlaylistItemEntity {
+        fun fromDomain(item: PlaylistItem, sortOrder: Int, groupId: String = "default"): PlaylistItemEntity {
             return PlaylistItemEntity(
                 id = item.id,
                 title = item.title,
@@ -47,7 +48,8 @@ data class PlaylistItemEntity(
                 driveFolderId = item.driveFolderId,
                 ytChannelId = item.ytChannelId,
                 sortOrder = sortOrder,
-                addedTime = item.addedTime
+                addedTime = item.addedTime,
+                playlistGroupId = groupId
             )
         }
     }

@@ -6,6 +6,12 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface PlaylistDao {
+    @Query("SELECT * FROM playlist_items WHERE playlistGroupId = :groupId ORDER BY sortOrder ASC")
+    fun getByGroupFlow(groupId: String): Flow<List<PlaylistItemEntity>>
+
+    @Query("SELECT * FROM playlist_items WHERE playlistGroupId = :groupId ORDER BY sortOrder ASC")
+    suspend fun getByGroup(groupId: String): List<PlaylistItemEntity>
+
     @Query("SELECT * FROM playlist_items ORDER BY sortOrder ASC")
     fun getAllFlow(): Flow<List<PlaylistItemEntity>>
 
@@ -24,9 +30,9 @@ interface PlaylistDao {
     @Query("DELETE FROM playlist_items WHERE id = :id")
     suspend fun deleteById(id: String)
 
-    @Query("DELETE FROM playlist_items")
-    suspend fun clear()
+    @Query("DELETE FROM playlist_items WHERE playlistGroupId = :groupId")
+    suspend fun clearGroup(groupId: String)
 
-    @Query("SELECT MAX(sortOrder) FROM playlist_items")
-    suspend fun getMaxSortOrder(): Int?
+    @Query("SELECT MAX(sortOrder) FROM playlist_items WHERE playlistGroupId = :groupId")
+    suspend fun getMaxSortOrder(groupId: String): Int?
 }

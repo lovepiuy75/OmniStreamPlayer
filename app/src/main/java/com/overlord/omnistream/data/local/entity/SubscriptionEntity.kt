@@ -13,5 +13,7 @@ data class SubscriptionEntity(
     val type: String,                           // "GDRIVE" 或 "YOUTUBE"
     val publicUrl: String? = null,              // 若為公開共用連結則記錄
     val lastSyncedTime: Long = 0L,              // 上次同步時間
-    val autoAddToPlaylist: Boolean = true       // 是否自動將新內容加入播放清單
+    val autoAddToPlaylist: Boolean = true,      // 是否自動將新內容加入播放清單
+    val sinceTimestamp: Long? = null,           // 時間因子：只收此時間之後的新影片
+    val isPlaylist: Boolean = false             // 標記是否為 YouTube 播放清單
 )

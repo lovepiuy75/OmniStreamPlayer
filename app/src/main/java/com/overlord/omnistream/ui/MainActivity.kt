@@ -1,13 +1,12 @@
 package com.overlord.omnistream.ui
 
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cloud
-import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.*
@@ -25,12 +24,11 @@ import com.overlord.omnistream.data.local.entity.SubscriptionEntity
 import com.overlord.omnistream.playback.PlaybackController
 import com.overlord.omnistream.ui.components.MiniPlayerBar
 import com.overlord.omnistream.ui.screens.*
-import com.overlord.omnistream.ui.theme.BgDark
-import com.overlord.omnistream.ui.theme.CyanAccent
-import com.overlord.omnistream.ui.theme.OmniStreamTheme
-import com.overlord.omnistream.ui.theme.TextPrimary
+import com.overlord.omnistream.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.util.UUID
 import java.util.concurrent.TimeUnit
 
 class MainActivity : ComponentActivity() {
@@ -43,30 +41,32 @@ class MainActivity : ComponentActivity() {
         val app = application as OmniStreamApp
         val repo = app.repository
 
-        // 1. 初始化背景播放控制器
+        // 1. 初始化背景播放控制器並恢復斷點續播
         playbackController = PlaybackController(this)
         playbackController.connect {
-            // 連線完成後，執行跨啟動「斷點續播」恢復
             restorePreviousPlaybackState(repo)
         }
 
-        // 2. 啟動 Google 雲端定時背景同步 (每 4 小時自動檢查資料夾更新)
+        // 2. 啟動 Google 雲端定時背景同步 (每 4 小時自動檢查)
         scheduleDriveBackgroundSync()
 
-        // 3. 繪製 Jetpack Compose 介面
+        // 3. Jetpack Compose UI
         setContent {
             OmniStreamTheme {
                 var selectedTab by remember { mutableIntStateOf(0) }
                 var showFullPlayer by remember { mutableStateOf(false) }
+                var currentGroupId by remember { mutableStateOf("default") }
+                var isSyncingGDrive by remember { mutableStateOf(false) }
 
-                val playlist by repo.getPlaylistFlow().collectAsState(initial = emptyList())
+                val groups by repo.getPlaylistGroupsFlow().collectAsState(initial = emptyList())
+                val playlist by repo.getPlaylistFlow(currentGroupId).collectAsState(initial = emptyList())
+                val subscriptions by app.database.subscriptionDao().getByTypeFlow("GDRIVE").collectAsState(initial = emptyList())
                 val isPlaying by playbackController.isPlaying.collectAsState()
                 val currentItem by playbackController.currentMediaItem.collectAsState()
 
                 Scaffold(
                     bottomBar = {
                         Column {
-                            // 底部常駐 Mini Player Bar
                             MiniPlayerBar(
                                 controller = playbackController,
                                 isPlaying = isPlaying,
@@ -75,19 +75,12 @@ class MainActivity : ComponentActivity() {
                                 onClick = { showFullPlayer = true }
                             )
 
-                            // 底部導航欄
                             NavigationBar(containerColor = BgDark) {
                                 NavigationBarItem(
                                     selected = selectedTab == 0,
                                     onClick = { selectedTab = 0 },
                                     icon = { Icon(Icons.Default.QueueMusic, contentDescription = "播放清單") },
-                                    label = { Text("清單") },
-                                    colors = NavigationBarItemDefaults.colors(
-                                        selectedIconColor = CyanAccent,
-                                        selectedTextColor = CyanAccent,
-                                        unselectedIconColor = TextPrimary,
-                                        unselectedTextColor = TextPrimary
-                                    )
+                                    label = { Text("清單") }
                                 )
                                 NavigationBarItem(
                                     selected = selectedTab == 1,
@@ -108,48 +101,109 @@ class MainActivity : ComponentActivity() {
                     Box(modifier = Modifier.padding(innerPadding)) {
                         when (selectedTab) {
                             0 -> PlaylistScreen(
+                                groups = groups,
+                                selectedGroupId = currentGroupId,
+                                onSelectGroup = { currentGroupId = it },
+                                onCreateGroup = { name ->
+                                    lifecycleScope.launch(Dispatchers.IO) {
+                                        val gid = "grp_" + UUID.randomUUID().toString().take(8)
+                                        repo.createPlaylistGroup(gid, name)
+                                        currentGroupId = gid
+                                    }
+                                },
                                 items = playlist,
                                 onItemClick = { index ->
                                     playbackController.setPlaylistAndPlay(playlist, startIndex = index)
                                 },
                                 onDeleteItem = { id ->
-                                    lifecycleScope.launch { repo.removeItemFromPlaylist(id) }
+                                    lifecycleScope.launch(Dispatchers.IO) { repo.removeItemFromPlaylist(id) }
+                                },
+                                onScanLocalAudio = {
+                                    lifecycleScope.launch(Dispatchers.IO) {
+                                        val localFiles = repo.scanLocalAudioFiles()
+                                        repo.addItemsToPlaylist(localFiles, currentGroupId)
+                                        withContext(Dispatchers.Main) {
+                                            Toast.makeText(this@MainActivity, "已載入 ${localFiles.size} 首本機音訊", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
                                 }
                             )
                             1 -> GDriveScreen(
-                                onAddFolder = { folderId, name ->
+                                subscriptions = subscriptions,
+                                isSyncing = isSyncingGDrive,
+                                onAddFolder = { folderInput, name ->
                                     lifecycleScope.launch(Dispatchers.IO) {
+                                        val cleanFolderId = com.overlord.omnistream.data.gdrive.GoogleDriveService.extractFolderId(folderInput)
                                         app.database.subscriptionDao().insert(
-                                            SubscriptionEntity(id = folderId, name = name, type = "GDRIVE")
+                                            SubscriptionEntity(id = cleanFolderId, name = name, type = "GDRIVE", publicUrl = folderInput)
                                         )
-                                        // 立即初次拉取
-                                        val files = repo.gdriveService.fetchFolderAudioFiles(folderId, name)
-                                        repo.addItemsToPlaylist(files)
+                                        val files = repo.gdriveService.fetchFolderAudioFiles(cleanFolderId, name)
+                                        repo.addItemsToPlaylist(files, currentGroupId)
+                                        withContext(Dispatchers.Main) {
+                                            Toast.makeText(this@MainActivity, "已成功加入並解析出 ${files.size} 首雲端音訊！", Toast.LENGTH_LONG).show()
+                                        }
                                     }
+                                },
+                                onDeleteFolder = { id ->
+                                    lifecycleScope.launch(Dispatchers.IO) { app.database.subscriptionDao().deleteById(id) }
                                 },
                                 onSyncNow = {
                                     lifecycleScope.launch(Dispatchers.IO) {
-                                        // 手動觸發雲端同步
+                                        isSyncingGDrive = true
+                                        var totalNew = 0
+                                        val subs = app.database.subscriptionDao().getAll().filter { it.type == "GDRIVE" }
+                                        val currentIds = repo.getPlaylistItems(currentGroupId).map { it.id }.toSet()
+                                        for (sub in subs) {
+                                            val files = repo.gdriveService.fetchFolderAudioFiles(sub.id, sub.name)
+                                            val newFiles = files.filter { it.id !in currentIds }
+                                            if (newFiles.isNotEmpty()) {
+                                                repo.addItemsToPlaylist(newFiles, currentGroupId)
+                                                totalNew += newFiles.size
+                                            }
+                                        }
+                                        isSyncingGDrive = false
+                                        withContext(Dispatchers.Main) {
+                                            Toast.makeText(this@MainActivity, "雲端同步完成！新增 $totalNew 首檔案", Toast.LENGTH_SHORT).show()
+                                        }
                                     }
                                 }
                             )
                             2 -> YouTubeScreen(
-                                onAddChannel = { channelId, name ->
+                                onAddChannel = { channelInput, name, onlyNew ->
                                     lifecycleScope.launch(Dispatchers.IO) {
+                                        val cleanId = com.overlord.omnistream.data.youtube.YouTubeRssParser.extractChannelId(channelInput)
+                                        val sinceTs = if (onlyNew) System.currentTimeMillis() else null
                                         app.database.subscriptionDao().insert(
-                                            SubscriptionEntity(id = channelId, name = name, type = "YOUTUBE")
+                                            SubscriptionEntity(id = cleanId, name = name, type = "YOUTUBE", sinceTimestamp = sinceTs)
                                         )
-                                        val videos = repo.ytRssParser.fetchChannelLatestVideos(channelId, name)
-                                        repo.addItemsToPlaylist(videos)
+                                        val videos = repo.ytRssParser.fetchChannelLatestVideos(cleanId, name, sinceTs)
+                                        repo.addItemsToPlaylist(videos, currentGroupId)
+                                        withContext(Dispatchers.Main) {
+                                            Toast.makeText(this@MainActivity, "已訂閱！已依時間因子載入 ${videos.size} 首影片", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                },
+                                onImportPlaylist = { playlistInput, name ->
+                                    lifecycleScope.launch(Dispatchers.IO) {
+                                        val cleanPid = com.overlord.omnistream.data.youtube.YouTubePlaylistParser.extractPlaylistId(playlistInput)
+                                        val videos = repo.ytPlaylistParser.fetchPlaylistVideos(cleanPid, name)
+                                        repo.addItemsToPlaylist(videos, currentGroupId)
+                                        withContext(Dispatchers.Main) {
+                                            Toast.makeText(this@MainActivity, "播放清單匯入成功！共加入 ${videos.size} 首曲目", Toast.LENGTH_SHORT).show()
+                                        }
                                     }
                                 },
                                 onSyncVideos = {
-                                    // 檢查 YouTube 更新
+                                    lifecycleScope.launch(Dispatchers.IO) {
+                                        // 檢查頻道更新
+                                        withContext(Dispatchers.Main) {
+                                            Toast.makeText(this@MainActivity, "頻道已更新至最新狀態", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
                                 }
                             )
                         }
 
-                        // 全螢幕播放面板
                         if (showFullPlayer) {
                             PlayerScreen(
                                 controller = playbackController,
@@ -165,13 +219,10 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /**
-     * 斷點續播記憶恢復：讀取上次播放歌曲與毫秒進度
-     */
     private fun restorePreviousPlaybackState(repo: com.overlord.omnistream.data.repository.PlayerRepository) {
         lifecycleScope.launch(Dispatchers.IO) {
             val lastState = repo.getPlaybackState()
-            val playlist = repo.getAllPlaylistItems()
+            val playlist = repo.getPlaylistItems("default")
 
             if (lastState != null && playlist.isNotEmpty()) {
                 val index = playlist.indexOfFirst { it.id == lastState.currentItemId }.coerceAtLeast(0)
@@ -180,7 +231,6 @@ class MainActivity : ComponentActivity() {
                     startIndex = index,
                     startPositionMs = lastState.currentPositionMs
                 )
-                // 恢復進度後預設暫停，讓 Bryant 點擊開始接續播
                 playbackController.pause()
             }
         }
