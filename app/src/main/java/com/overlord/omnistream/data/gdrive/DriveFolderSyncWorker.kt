@@ -29,7 +29,7 @@ class DriveFolderSyncWorker(
         var newItemsCount = 0
         for (sub in gdriveSubs) {
             val fetched = repo.gdriveService.fetchFolderAudioFiles(sub.id, sub.name)
-            val currentPlaylistIds = repo.getAllPlaylistItems().map { it.id }.toSet()
+            val currentPlaylistIds = repo.getPlaylistItems().map { it.id }.toSet()
 
             val newItems = fetched.filter { it.id !in currentPlaylistIds }
             if (newItems.isNotEmpty()) {

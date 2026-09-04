@@ -125,7 +125,7 @@ class GoogleDriveService(private val client: OkHttpClient = OkHttpClient()) {
             val html = response.body?.string() ?: return@withContext emptyList()
 
             // 1. 嘗試由 window['_DRIVE_ivd'] 提取檔案列表
-            val ivdPattern = Pattern.compile("window\['_DRIVE_ivd'\]\s*=\s*'([^']+)'")
+            val ivdPattern = Pattern.compile("""window\['_DRIVE_ivd'\]\s*=\s*'([^']+)'""")
             val ivdMatcher = ivdPattern.matcher(html)
             if (ivdMatcher.find()) {
                 val rawEscaped = ivdMatcher.group(1)
@@ -140,7 +140,7 @@ class GoogleDriveService(private val client: OkHttpClient = OkHttpClient()) {
             }
 
             // 2. 備用方案：透過 DOM data-id 與 tooltip 標籤提取
-            val fallbackPattern = Pattern.compile("data-id=\"([a-zA-Z0-9_-]{25,})\"[^>]*data-tooltip=\"([^\"]+\.(?:mp3|m4a|wav|aac|ogg))")
+            val fallbackPattern = Pattern.compile("""data-id="([a-zA-Z0-9_-]{25,})"[^>]*data-tooltip="([^"]+\.(?:mp3|m4a|wav|aac|ogg))""")
             val matcher = fallbackPattern.matcher(html)
             val seenIds = mutableSetOf<String>()
             while (matcher.find()) {
