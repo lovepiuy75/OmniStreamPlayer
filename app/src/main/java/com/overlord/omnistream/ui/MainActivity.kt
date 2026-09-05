@@ -64,10 +64,12 @@ class MainActivity : ComponentActivity() {
                 var showFullPlayer by remember { mutableStateOf(false) }
                 var currentGroupId by remember { mutableStateOf("default") }
                 var isSyncingGDrive by remember { mutableStateOf(false) }
+                var isSyncingYouTube by remember { mutableStateOf(false) }
 
                 val groups by repo.getPlaylistGroupsFlow().collectAsState(initial = emptyList())
                 val playlist by repo.getPlaylistFlow(currentGroupId).collectAsState(initial = emptyList())
                 val subscriptions by app.database.subscriptionDao().getByTypeFlow("GDRIVE").collectAsState(initial = emptyList())
+                val ytSubscriptions by app.database.subscriptionDao().getByTypeFlow("YOUTUBE").collectAsState(initial = emptyList())
                 val isPlaying by playbackController.isPlaying.collectAsState()
                 val currentItem by playbackController.currentMediaItem.collectAsState()
 
@@ -156,9 +158,9 @@ class MainActivity : ComponentActivity() {
                                 items = playlist,
                                 onItemClick = { index ->
                                     val clicked = playlist[index]
-                                    if (clicked.sourceType == MediaSourceType.YOUTUBE || clicked.mediaUri.contains("youtube.com/watch")) {
+                                    if (clicked.mediaUri.contains("youtube.com/watch") || clicked.mediaUri.isBlank()) {
                                         lifecycleScope.launch(Dispatchers.IO) {
-                                            val vid = clicked.id.removePrefix("yt_")
+                                            val vid = com.overlord.omnistream.data.youtube.YouTubeAudioExtractor.extractVideoId(clicked.id.ifBlank { clicked.mediaUri })
                                             val mediaInfo = repo.ytAudioExtractor.extractMediaInfo(vid)
                                             val freshUrl = mediaInfo?.audioUrl
                                             if (freshUrl != null) {
@@ -236,23 +238,51 @@ class MainActivity : ComponentActivity() {
                                 }
                             )
                             2 -> YouTubeScreen(
+                                subscriptions = ytSubscriptions,
+                                isSyncing = isSyncingYouTube,
                                 onAddChannel = { channelInput, name, onlyNew ->
                                     lifecycleScope.launch(Dispatchers.IO) {
-                                        val cleanId = com.overlord.omnistream.data.youtube.YouTubeRssParser.extractChannelId(channelInput)
+                                        val resolvedId = repo.ytRssParser.resolveRealChannelId(channelInput)
                                         val sinceTs = if (onlyNew) System.currentTimeMillis() else null
                                         app.database.subscriptionDao().insert(
-                                            SubscriptionEntity(id = cleanId, name = name, type = "YOUTUBE", sinceTimestamp = sinceTs)
+                                            SubscriptionEntity(
+                                                id = resolvedId,
+                                                name = name,
+                                                type = "YOUTUBE",
+                                                isPlaylist = false,
+                                                publicUrl = channelInput,
+                                                sinceTimestamp = sinceTs,
+                                                lastSyncedTime = System.currentTimeMillis()
+                                            )
                                         )
-                                        val videos = repo.ytRssParser.fetchChannelLatestVideos(cleanId, name, sinceTs)
+                                        val videos = repo.ytRssParser.fetchChannelLatestVideos(resolvedId, name, sinceTs)
                                         repo.addItemsToPlaylist(videos, currentGroupId)
                                         withContext(Dispatchers.Main) {
-                                            Toast.makeText(this@MainActivity, "已訂閱！已依時間因子載入 ${videos.size} 首影片", Toast.LENGTH_SHORT).show()
+                                            Toast.makeText(this@MainActivity, "已訂閱！已載入 ${videos.size} 首影片至清單", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                },
+                                onDeleteSubscription = { id ->
+                                    lifecycleScope.launch(Dispatchers.IO) {
+                                        app.database.subscriptionDao().deleteById(id)
+                                        withContext(Dispatchers.Main) {
+                                            Toast.makeText(this@MainActivity, "已移除追蹤紀錄", Toast.LENGTH_SHORT).show()
                                         }
                                     }
                                 },
                                 onImportPlaylist = { playlistInput, name ->
                                     lifecycleScope.launch(Dispatchers.IO) {
                                         val cleanPid = com.overlord.omnistream.data.youtube.YouTubePlaylistParser.extractPlaylistId(playlistInput)
+                                        app.database.subscriptionDao().insert(
+                                            SubscriptionEntity(
+                                                id = cleanPid,
+                                                name = name,
+                                                type = "YOUTUBE",
+                                                isPlaylist = true,
+                                                publicUrl = playlistInput,
+                                                lastSyncedTime = System.currentTimeMillis()
+                                            )
+                                        )
                                         val videos = repo.ytPlaylistParser.fetchPlaylistVideos(cleanPid, name)
                                         repo.addItemsToPlaylist(videos, currentGroupId)
                                         withContext(Dispatchers.Main) {
@@ -262,9 +292,22 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onSyncVideos = {
                                     lifecycleScope.launch(Dispatchers.IO) {
-                                        // 檢查頻道更新
+                                        isSyncingYouTube = true
+                                        val channels = app.database.subscriptionDao().getAll().filter { it.type == "YOUTUBE" && !it.isPlaylist }
+                                        val currentIds = repo.getPlaylistItems(currentGroupId).map { it.id }.toSet()
+                                        var totalNew = 0
+                                        for (ch in channels) {
+                                            val videos = repo.ytRssParser.fetchChannelLatestVideos(ch.id, ch.name, ch.sinceTimestamp)
+                                            val newVideos = videos.filter { it.id !in currentIds }
+                                            if (newVideos.isNotEmpty()) {
+                                                repo.addItemsToPlaylist(newVideos, currentGroupId)
+                                                totalNew += newVideos.size
+                                            }
+                                            app.database.subscriptionDao().updateLastSyncedTime(ch.id, System.currentTimeMillis())
+                                        }
+                                        isSyncingYouTube = false
                                         withContext(Dispatchers.Main) {
-                                            Toast.makeText(this@MainActivity, "頻道已更新至最新狀態", Toast.LENGTH_SHORT).show()
+                                            Toast.makeText(this@MainActivity, "頻道檢查完成！共新增 $totalNew 首最新曲目", Toast.LENGTH_SHORT).show()
                                         }
                                     }
                                 }

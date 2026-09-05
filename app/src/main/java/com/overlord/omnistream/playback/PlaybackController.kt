@@ -182,8 +182,10 @@ class PlaybackController(private val context: Context) {
         runOnMainThread {
             val controller = mediaController ?: return@runOnMainThread
             if (controller.mediaItemCount == items.size && index < items.size) {
-                val targetId = items[index].id
-                if (controller.getMediaItemAt(index).mediaId == targetId) {
+                val target = items[index]
+                val current = controller.getMediaItemAt(index)
+                val currentUri = current.localConfiguration?.uri?.toString()
+                if (current.mediaId == target.id && currentUri == target.mediaUri) {
                     controller.seekToDefaultPosition(index)
                     controller.play()
                     return@runOnMainThread

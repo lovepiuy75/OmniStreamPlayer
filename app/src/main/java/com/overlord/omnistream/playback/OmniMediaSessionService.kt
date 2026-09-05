@@ -43,19 +43,12 @@ class OmniMediaSessionService : MediaSessionService() {
         super.onCreate()
         val app = applicationContext as OmniStreamApp
 
-        // 1. 配置支援 Bearer Token 注入、YouTube 相容 User-Agent 與邊播邊緩存的 DataSource
+        // 1. 配置 YouTube 與 Google Drive 友善之相容 User-Agent 與邊播邊緩存的 DataSource
         val httpDataSourceFactory = DefaultHttpDataSource.Factory()
-            .setUserAgent("com.google.android.youtube/21.26.364 (Linux; U; Android 11) gzip")
+            .setUserAgent("com.google.android.youtube/21.26.364 (Linux; U; Android 11)")
             .setAllowCrossProtocolRedirects(true)
             .setConnectTimeoutMs(15000)
             .setReadTimeoutMs(15000)
-            .setDefaultRequestProperties(
-                buildMap {
-                    app.repository.gdriveService.currentAccessToken?.let {
-                        put("Authorization", "Bearer $it")
-                    }
-                }
-            )
 
         val upstreamFactory = DefaultDataSource.Factory(this, httpDataSourceFactory)
         val cacheDataSourceFactory = MediaCacheManager.createCacheDataSourceFactory(upstreamFactory)
@@ -96,7 +89,7 @@ class OmniMediaSessionService : MediaSessionService() {
                 val currentId = currentItem.mediaId
                 if (currentId.startsWith("yt_")) {
                     serviceScope.launch(Dispatchers.IO) {
-                        val vid = currentId.removePrefix("yt_")
+                        val vid = com.overlord.omnistream.data.youtube.YouTubeAudioExtractor.extractVideoId(currentId)
                         val freshInfo = app.repository.ytAudioExtractor.extractMediaInfo(vid)
                         if (freshInfo != null) {
                             app.repository.updateItemMediaUri(currentId, freshInfo.audioUrl)

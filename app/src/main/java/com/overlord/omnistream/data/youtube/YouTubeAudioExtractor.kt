@@ -24,24 +24,40 @@ class YouTubeAudioExtractor(private val client: OkHttpClient = OkHttpClient()) {
     companion object {
         private const val TAG = "YTAudioExtractor"
         private const val INNERTUBE_PLAYER_URL = "https://www.youtube.com/youtubei/v1/player?prettyPrint=false"
+        private val VIDEO_ID_PATTERN = java.util.regex.Pattern.compile("(?:v=|v\\/|vi=|vi\\/|youtu\\.be\\/|embed\\/|shorts\\/|^)([a-zA-Z0-9_-]{11})(?:[^a-zA-Z0-9_-]|$)")
 
-        // 客戶端備援清單：ANDROID_VR (優質 Opus 音訊) -> ANDROID (高相容度 Format 18 MP4 / 音訊)
+        /**
+         * 從各種 YouTube 網址格式 (watch?v=, youtu.be/, shorts/, embed/, yt_ 前綴) 精準提取 11 位元 Video ID
+         */
+        fun extractVideoId(input: String): String {
+            val trimmed = input.trim().removePrefix("yt_")
+            val matcher = VIDEO_ID_PATTERN.matcher(trimmed)
+            if (matcher.find()) {
+                return matcher.group(1) ?: trimmed
+            }
+            if (trimmed.length == 11 && !trimmed.contains("/") && !trimmed.contains("?")) {
+                return trimmed
+            }
+            return trimmed.substringBefore("&").substringBefore("?")
+        }
+
+        // 客戶端備援清單：ANDROID (高相容度 Format 18 MP4 / 純音訊) -> ANDROID_VR (優質 Opus 音訊)
         private val CLIENT_CONFIGS = listOf(
-            ClientConfig(
-                name = "ANDROID_VR",
-                version = "1.61.48",
-                userAgent = "com.google.android.youtube/19.29.37",
-                extraContext = emptyMap()
-            ),
             ClientConfig(
                 name = "ANDROID",
                 version = "21.26.364",
-                userAgent = "com.google.android.youtube/21.26.364 (Linux; U; Android 11) gzip",
+                userAgent = "com.google.android.youtube/21.26.364 (Linux; U; Android 11)",
                 extraContext = mapOf(
                     "androidSdkVersion" to 30,
                     "osName" to "Android",
                     "osVersion" to "11"
                 )
+            ),
+            ClientConfig(
+                name = "ANDROID_VR",
+                version = "1.61.48",
+                userAgent = "com.google.android.youtube/19.29.37",
+                extraContext = emptyMap()
             )
         )
     }
@@ -58,7 +74,7 @@ class YouTubeAudioExtractor(private val client: OkHttpClient = OkHttpClient()) {
     }
 
     suspend fun extractMediaInfo(videoId: String): YouTubeMediaInfo? = withContext(Dispatchers.IO) {
-        val cleanId = videoId.removePrefix("yt_").substringBefore("&").substringBefore("?")
+        val cleanId = extractVideoId(videoId)
         if (cleanId.isBlank()) return@withContext null
 
         for (cfg in CLIENT_CONFIGS) {
