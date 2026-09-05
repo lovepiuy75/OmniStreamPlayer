@@ -4,6 +4,7 @@ import com.overlord.omnistream.core.model.MediaSourceType
 import com.overlord.omnistream.core.model.PlaylistItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
@@ -96,7 +97,7 @@ class GoogleDriveService(private val client: OkHttpClient = OkHttpClient()) {
         val query = "'$folderId' in parents and trashed = false"
 
         do {
-            val httpUrlBuilder = okhttp3.HttpUrl.parse("https://www.googleapis.com/drive/v3/files")?.newBuilder()
+            val httpUrlBuilder = "https://www.googleapis.com/drive/v3/files".toHttpUrlOrNull()?.newBuilder()
                 ?: break
             httpUrlBuilder.addQueryParameter("q", query)
             httpUrlBuilder.addQueryParameter("pageSize", "1000")
