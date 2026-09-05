@@ -19,6 +19,7 @@ class GoogleDriveService(private val client: OkHttpClient = OkHttpClient()) {
     var currentAccessToken: String? = null
 
     companion object {
+        private const val PUBLIC_DRIVE_API_KEY = "AIzaSyAWGrfCCr7albM3lmCc937gx4uIphbpeKQ"
         private val FOLDER_ID_PATTERN = Pattern.compile("(?:folders/|[?&]id=)([a-zA-Z0-9_-]{25,})")
 
         /**
@@ -34,6 +35,28 @@ class GoogleDriveService(private val client: OkHttpClient = OkHttpClient()) {
                 trimmed.substringBefore("?").substringBefore("&")
             }
         }
+
+        /**
+         * 自然排序比較器（如 ep1, ep2, ..., ep10）
+         */
+        fun naturalCompare(s1: String, s2: String): Int {
+            val regex = "(\\d+)|(\\D+)".toRegex()
+            val m1 = regex.findAll(s1).map { it.value }.iterator()
+            val m2 = regex.findAll(s2).map { it.value }.iterator()
+            while (m1.hasNext() && m2.hasNext()) {
+                val t1 = m1.next()
+                val t2 = m2.next()
+                val num1 = t1.toLongOrNull()
+                val num2 = t2.toLongOrNull()
+                val cmp = if (num1 != null && num2 != null) {
+                    num1.compareTo(num2)
+                } else {
+                    t1.compareTo(t2, ignoreCase = true)
+                }
+                if (cmp != 0) return cmp
+            }
+            return if (m1.hasNext()) 1 else if (m2.hasNext()) -1 else 0
+        }
     }
 
     /**
@@ -44,7 +67,7 @@ class GoogleDriveService(private val client: OkHttpClient = OkHttpClient()) {
     }
 
     /**
-     * 抓取 Google Drive 指定資料夾內音訊檔案
+     * 抓取 Google Drive 指定資料夾內音訊檔案（支援 1000+ 首全量分頁與公開/私有資料夾）
      */
     suspend fun fetchFolderAudioFiles(
         folderIdOrUrl: String,
@@ -53,55 +76,92 @@ class GoogleDriveService(private val client: OkHttpClient = OkHttpClient()) {
         val folderId = extractFolderId(folderIdOrUrl)
         val token = currentAccessToken
 
-        // 若有 Token 優先使用官方 API
-        if (token != null) {
-            val apiFiles = fetchViaOfficialApi(folderId, folderName, token)
-            if (apiFiles.isNotEmpty()) return@withContext apiFiles
-        }
+        // 優先使用 Drive v3 API（支援分頁循環與 pageSize=1000，一次拉取全量檔案）
+        val apiFiles = fetchViaDriveV3Api(folderId, folderName, token)
+        if (apiFiles.isNotEmpty()) return@withContext apiFiles
 
-        // 否則使用免登入公開資料夾解析器
+        // 備用方案：免登入公開資料夾網頁解析器
         return@withContext fetchPublicFolderAudioFiles(folderId, folderName)
     }
 
-    private fun fetchViaOfficialApi(
+    private fun fetchViaDriveV3Api(
         folderId: String,
         folderName: String,
-        token: String
+        token: String?,
+        apiKey: String = PUBLIC_DRIVE_API_KEY
     ): List<PlaylistItem> {
         val result = mutableListOf<PlaylistItem>()
-        val query = "'$folderId' in parents and trashed = false and (mimeType contains 'audio/' or name contains '.mp3' or name contains '.m4a')"
-        val url = "https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name,size,createdTime)&orderBy=name asc"
+        val audioExtensions = listOf(".mp3", ".m4a", ".wav", ".aac", ".ogg", ".flac", ".opus", ".webm")
+        var pageToken: String? = null
+        val query = "'$folderId' in parents and trashed = false"
 
-        val request = Request.Builder()
-            .url(url)
-            .addHeader("Authorization", "Bearer $token")
-            .build()
+        do {
+            val httpUrlBuilder = okhttp3.HttpUrl.parse("https://www.googleapis.com/drive/v3/files")?.newBuilder()
+                ?: break
+            httpUrlBuilder.addQueryParameter("q", query)
+            httpUrlBuilder.addQueryParameter("pageSize", "1000")
+            httpUrlBuilder.addQueryParameter("fields", "nextPageToken,files(id,name,mimeType,size)")
+            httpUrlBuilder.addQueryParameter("orderBy", "name asc")
 
-        try {
-            val response = client.newCall(request).execute()
-            val body = response.body?.string() ?: ""
-            if (response.isSuccessful) {
+            if (token != null) {
+                // 有 OAuth token 優先透過 Bearer Header 驗證
+            } else {
+                httpUrlBuilder.addQueryParameter("key", apiKey)
+            }
+
+            if (pageToken != null) {
+                httpUrlBuilder.addQueryParameter("pageToken", pageToken)
+            }
+
+            val reqBuilder = Request.Builder().url(httpUrlBuilder.build())
+            if (token != null) {
+                reqBuilder.addHeader("Authorization", "Bearer $token")
+            }
+
+            try {
+                val response = client.newCall(reqBuilder.build()).execute()
+                val body = response.body?.string() ?: ""
+                if (!response.isSuccessful) {
+                    break
+                }
                 val json = JSONObject(body)
-                val files = json.optJSONArray("files") ?: return emptyList()
+                val files = json.optJSONArray("files") ?: break
                 for (i in 0 until files.length()) {
                     val file = files.getJSONObject(i)
-                    val id = file.getString("id")
-                    val name = file.getString("name")
-                    result.add(
-                        PlaylistItem(
-                            id = "gdrive_$id",
-                            title = name.substringBeforeLast("."),
-                            artist = folderName,
-                            mediaUri = "https://www.googleapis.com/drive/v3/files/$id?alt=media",
-                            sourceType = MediaSourceType.GDRIVE,
-                            driveFolderId = folderId
+                    val id = file.optString("id")
+                    val name = file.optString("name")
+                    val mimeType = file.optString("mimeType", "")
+
+                    val isAudio = mimeType.startsWith("audio/") ||
+                            audioExtensions.any { name.endsWith(it, ignoreCase = true) }
+
+                    if (isAudio && id.isNotBlank()) {
+                        val mediaUri = if (token != null) {
+                            "https://www.googleapis.com/drive/v3/files/$id?alt=media"
+                        } else {
+                            buildPublicStreamUrl(id)
+                        }
+                        result.add(
+                            PlaylistItem(
+                                id = "gdrive_$id",
+                                title = name.substringBeforeLast("."),
+                                artist = folderName,
+                                mediaUri = mediaUri,
+                                sourceType = MediaSourceType.GDRIVE,
+                                driveFolderId = folderId
+                            )
                         )
-                    )
+                    }
                 }
+                pageToken = json.optString("nextPageToken").takeIf { it.isNotBlank() }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                break
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+        } while (pageToken != null)
+
+        // 自然排序：讓 ep1, ep2, ..., ep10 按人類直覺數字順序排列
+        result.sortWith { a, b -> naturalCompare(a.title, b.title) }
         return result
     }
 
@@ -163,6 +223,8 @@ class GoogleDriveService(private val client: OkHttpClient = OkHttpClient()) {
             e.printStackTrace()
         }
 
+        // 自然排序
+        result.sortWith { a, b -> naturalCompare(a.title, b.title) }
         return@withContext result
     }
 
