@@ -54,6 +54,20 @@ class MainActivity : ComponentActivity() {
             restorePreviousPlaybackState(repo)
         }
 
+        // 1.5 檢查本機備份並自動無縫還原（避免重新安裝 App 後設定遺失）
+        lifecycleScope.launch(Dispatchers.IO) {
+            val subsCount = app.database.subscriptionDao().getAll().size
+            val itemsCount = repo.getPlaylistItems("default").size
+            if (subsCount == 0 && itemsCount == 0) {
+                val restored = repo.backupManager.restoreBackupIfAvailable()
+                if (restored > 0) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(this@MainActivity, "✨ 已自動為您接回前次保留的設定與訂閱清單！", Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        }
+
         // 2. 啟動 Google 雲端定時背景同步 (每 4 小時自動檢查)
         scheduleDriveBackgroundSync()
 
@@ -233,6 +247,30 @@ class MainActivity : ComponentActivity() {
                                         isSyncingGDrive = false
                                         withContext(Dispatchers.Main) {
                                             Toast.makeText(this@MainActivity, "雲端同步完成！新增 $totalNew 首檔案", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                },
+                                onManualBackup = {
+                                    lifecycleScope.launch(Dispatchers.IO) {
+                                        val ok = repo.backupManager.createBackup()
+                                        withContext(Dispatchers.Main) {
+                                            if (ok) {
+                                                Toast.makeText(this@MainActivity, "備份成功！已存至 Download/omnistream_backup.json", Toast.LENGTH_LONG).show()
+                                            } else {
+                                                Toast.makeText(this@MainActivity, "備份失敗，請檢視權限", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    }
+                                },
+                                onManualRestore = {
+                                    lifecycleScope.launch(Dispatchers.IO) {
+                                        val count = repo.backupManager.restoreBackupIfAvailable()
+                                        withContext(Dispatchers.Main) {
+                                            if (count > 0) {
+                                                Toast.makeText(this@MainActivity, "還原成功！已恢復 $count 筆訂閱與設定", Toast.LENGTH_LONG).show()
+                                            } else {
+                                                Toast.makeText(this@MainActivity, "未找到有效的備份檔案或資料已存在", Toast.LENGTH_SHORT).show()
+                                            }
                                         }
                                     }
                                 }

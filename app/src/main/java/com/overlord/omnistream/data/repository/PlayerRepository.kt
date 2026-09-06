@@ -31,6 +31,7 @@ class PlayerRepository(
     val groupDao by lazy { database.playlistGroupDao() }
     val playbackStateDao by lazy { database.playbackStateDao() }
     val subscriptionDao by lazy { database.subscriptionDao() }
+    val backupManager by lazy { com.overlord.omnistream.data.backup.ConfigBackupManager(context, database) }
 
 
     // 播放清單群組
@@ -38,11 +39,13 @@ class PlayerRepository(
 
     suspend fun createPlaylistGroup(id: String, name: String) {
         groupDao.insert(PlaylistGroupEntity(id = id, name = name))
+        backupManager.createBackup()
     }
 
     suspend fun deletePlaylistGroup(id: String) {
         groupDao.deleteById(id)
         playlistDao.clearGroup(id)
+        backupManager.createBackup()
     }
 
     // 取得指定群組的播放清單
@@ -60,14 +63,17 @@ class PlayerRepository(
             PlaylistItemEntity.fromDomain(item, currentMax + index + 1, groupId)
         }
         playlistDao.insertAll(entities)
+        backupManager.createBackup()
     }
 
     suspend fun removeItemFromPlaylist(id: String) {
         playlistDao.deleteById(id)
+        backupManager.createBackup()
     }
 
     suspend fun clearPlaylist(groupId: String = "default") {
         playlistDao.clearGroup(groupId)
+        backupManager.createBackup()
     }
 
     suspend fun updateItemMediaUri(id: String, mediaUri: String) {

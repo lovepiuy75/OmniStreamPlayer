@@ -25,7 +25,9 @@ fun GDriveScreen(
     isSyncing: Boolean,
     onAddFolder: (folderIdOrUrl: String, name: String) -> Unit,
     onDeleteFolder: (id: String) -> Unit,
-    onSyncNow: () -> Unit
+    onSyncNow: () -> Unit,
+    onManualBackup: () -> Unit = {},
+    onManualRestore: () -> Unit = {}
 ) {
     var folderInput by remember { mutableStateOf("") }
     var folderNameInput by remember { mutableStateOf("") }
@@ -127,6 +129,26 @@ fun GDriveScreen(
                     Spacer(modifier = Modifier.width(6.dp))
                     Text("立即同步全部", color = CyanAccent)
                 }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(6.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            OutlinedButton(
+                onClick = onManualBackup,
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("💾 立即備份設定", color = CyanAccent, fontSize = 12.sp)
+            }
+            OutlinedButton(
+                onClick = onManualRestore,
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("🔄 手動還原設定", color = CyanAccent, fontSize = 12.sp)
             }
         }
 

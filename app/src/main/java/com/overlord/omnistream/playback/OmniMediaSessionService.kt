@@ -39,9 +39,24 @@ class OmniMediaSessionService : MediaSessionService() {
     private val serviceScope = CoroutineScope(Dispatchers.Main + Job())
     private var progressTrackerJob: Job? = null
 
+    private val becomingNoisyReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
+            if (intent?.action == android.media.AudioManager.ACTION_AUDIO_BECOMING_NOISY) {
+                if (::exoPlayer.isInitialized && exoPlayer.isPlaying) {
+                    android.util.Log.i("OmniSessionService", "Audio becoming noisy (headphone/bluetooth disconnected), auto-pausing playback.")
+                    exoPlayer.pause()
+                }
+            }
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         val app = applicationContext as OmniStreamApp
+
+        // 註冊耳機與藍芽斷線監聽廣播，斷線時立刻自動暫停
+        val filter = android.content.IntentFilter(android.media.AudioManager.ACTION_AUDIO_BECOMING_NOISY)
+        registerReceiver(becomingNoisyReceiver, filter)
 
         // 1. 配置 YouTube 與 Google Drive 友善之相容 User-Agent 與邊播邊緩存的 DataSource
         val httpDataSourceFactory = DefaultHttpDataSource.Factory()
@@ -65,6 +80,7 @@ class OmniMediaSessionService : MediaSessionService() {
                     .build(),
                 true // handleAudioFocus: 自動處理音訊焦點（來電暫停、通話結束續播）
             )
+            .setHandleAudioBecomingNoisy(true) // 耳機/藍芽斷開時原生自動暫停
             .setWakeMode(C.WAKE_MODE_NETWORK) // 鎖屏時保持網路與 CPU 運作
             .build()
 
@@ -147,6 +163,11 @@ class OmniMediaSessionService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        try {
+            unregisterReceiver(becomingNoisyReceiver)
+        } catch (e: Exception) {
+            // ignore if not registered
+        }
         saveCurrentPlaybackProgress()
         progressTrackerJob?.cancel()
         mediaSession?.run {
