@@ -21,6 +21,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.border
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.VolumeUp
 import com.overlord.omnistream.core.model.MediaSourceType
 import com.overlord.omnistream.core.model.PlaylistItem
@@ -37,7 +38,9 @@ fun PlaylistScreen(
     items: List<PlaylistItem>,
     onItemClick: (Int) -> Unit,
     onDeleteItem: (String) -> Unit,
-    onScanLocalAudio: () -> Unit
+    onScanLocalAudio: () -> Unit,
+    isSyncing: Boolean = false,
+    onSyncCloud: () -> Unit = {}
 ) {
     var showCreateDialog by remember { mutableStateOf(false) }
     var newGroupName by remember { mutableStateOf("") }
@@ -113,6 +116,27 @@ fun PlaylistScreen(
                             showCreateDialog = true
                         }
                     )
+                }
+            }
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            // 雲端硬碟一鍵同步按鈕
+            IconButton(
+                onClick = onSyncCloud,
+                enabled = !isSyncing,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(CardDark)
+            ) {
+                if (isSyncing) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp,
+                        color = CyanAccent
+                    )
+                } else {
+                    Icon(Icons.Default.Sync, contentDescription = "同步雲端硬碟", tint = CyanAccent)
                 }
             }
 

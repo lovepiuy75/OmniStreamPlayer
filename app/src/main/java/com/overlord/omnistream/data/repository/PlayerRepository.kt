@@ -66,6 +66,50 @@ class PlayerRepository(
         backupManager.createBackup()
     }
 
+    /**
+     * 深度同步並合併 Google Drive 資料夾項目：
+     * 1. 抓取雲端最新檔案（包含持續新增的集數）
+     * 2. 與群組內既有項目合併（補充新檔案）
+     * 3. 依自然排序重新整理整個群組中所有項目的 sortOrder
+     * 4. 即時觸發備份
+     * @return 新增的檔案數量
+     */
+    suspend fun syncAndMergeFolderItems(
+        groupId: String,
+        folderId: String,
+        folderName: String
+    ): Int = withContext(Dispatchers.IO) {
+        val remoteFiles = gdriveService.fetchFolderAudioFiles(folderId, folderName)
+        if (remoteFiles.isEmpty()) return@withContext 0
+
+        val existingEntities = playlistDao.getByGroup(groupId)
+        val existingMap = existingEntities.associateBy { it.id }.toMutableMap()
+        var newCount = 0
+
+        // 檢查並加入新檔案
+        for (file in remoteFiles) {
+            if (!existingMap.containsKey(file.id)) {
+                val newEntity = PlaylistItemEntity.fromDomain(file, 0, groupId)
+                existingMap[file.id] = newEntity
+                newCount++
+            }
+        }
+
+        // 對現有群組內所有項目（包含既有的其他項目與新加入的項目）重新進行自然排序
+        val allItems = existingMap.values.toList()
+        val sortedList = allItems.sortedWith { a, b ->
+            GoogleDriveService.naturalCompare(a.title, b.title)
+        }
+
+        val reorderedEntities = sortedList.mapIndexed { index, entity ->
+            entity.copy(sortOrder = index + 1)
+        }
+
+        playlistDao.insertAll(reorderedEntities)
+        backupManager.createBackup()
+        return@withContext newCount
+    }
+
     suspend fun removeItemFromPlaylist(id: String) {
         playlistDao.deleteById(id)
         backupManager.createBackup()

@@ -209,6 +209,33 @@ class MainActivity : ComponentActivity() {
                                             Toast.makeText(this@MainActivity, "已載入 ${localFiles.size} 首本機音訊", Toast.LENGTH_SHORT).show()
                                         }
                                     }
+                                },
+                                isSyncing = isSyncingGDrive,
+                                onSyncCloud = {
+                                    lifecycleScope.launch(Dispatchers.IO) {
+                                        isSyncingGDrive = true
+                                        var totalNew = 0
+                                        val subs = app.database.subscriptionDao().getAll().filter { it.type == "GDRIVE" }
+                                        if (subs.isEmpty()) {
+                                            isSyncingGDrive = false
+                                            withContext(Dispatchers.Main) {
+                                                Toast.makeText(this@MainActivity, "尚未新增任何 Google 雲端資料夾，請至「Google 雲端」分頁新增", Toast.LENGTH_LONG).show()
+                                            }
+                                            return@launch
+                                        }
+                                        for (sub in subs) {
+                                            val added = repo.syncAndMergeFolderItems(currentGroupId, sub.id, sub.name)
+                                            totalNew += added
+                                        }
+                                        isSyncingGDrive = false
+                                        withContext(Dispatchers.Main) {
+                                            if (totalNew > 0) {
+                                                Toast.makeText(this@MainActivity, "雲端同步完成！新增 $totalNew 首檔案並已完成自然排序", Toast.LENGTH_SHORT).show()
+                                            } else {
+                                                Toast.makeText(this@MainActivity, "已是最新狀態，無新增雲端檔案", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    }
                                 }
                             )
                             1 -> GDriveScreen(
@@ -220,10 +247,9 @@ class MainActivity : ComponentActivity() {
                                         app.database.subscriptionDao().insert(
                                             SubscriptionEntity(id = cleanFolderId, name = name, type = "GDRIVE", publicUrl = folderInput)
                                         )
-                                        val files = repo.gdriveService.fetchFolderAudioFiles(cleanFolderId, name)
-                                        repo.addItemsToPlaylist(files, currentGroupId)
+                                        val added = repo.syncAndMergeFolderItems(currentGroupId, cleanFolderId, name)
                                         withContext(Dispatchers.Main) {
-                                            Toast.makeText(this@MainActivity, "已成功加入並解析出 ${files.size} 首雲端音訊！", Toast.LENGTH_LONG).show()
+                                            Toast.makeText(this@MainActivity, "已成功加入並解析出音訊（新增 $added 首）！", Toast.LENGTH_LONG).show()
                                         }
                                     }
                                 },
@@ -235,18 +261,17 @@ class MainActivity : ComponentActivity() {
                                         isSyncingGDrive = true
                                         var totalNew = 0
                                         val subs = app.database.subscriptionDao().getAll().filter { it.type == "GDRIVE" }
-                                        val currentIds = repo.getPlaylistItems(currentGroupId).map { it.id }.toSet()
                                         for (sub in subs) {
-                                            val files = repo.gdriveService.fetchFolderAudioFiles(sub.id, sub.name)
-                                            val newFiles = files.filter { it.id !in currentIds }
-                                            if (newFiles.isNotEmpty()) {
-                                                repo.addItemsToPlaylist(newFiles, currentGroupId)
-                                                totalNew += newFiles.size
-                                            }
+                                            val added = repo.syncAndMergeFolderItems(currentGroupId, sub.id, sub.name)
+                                            totalNew += added
                                         }
                                         isSyncingGDrive = false
                                         withContext(Dispatchers.Main) {
-                                            Toast.makeText(this@MainActivity, "雲端同步完成！新增 $totalNew 首檔案", Toast.LENGTH_SHORT).show()
+                                            if (totalNew > 0) {
+                                                Toast.makeText(this@MainActivity, "雲端同步完成！新增 $totalNew 首檔案並已完成自然排序", Toast.LENGTH_SHORT).show()
+                                            } else {
+                                                Toast.makeText(this@MainActivity, "已是最新狀態，無新增雲端檔案", Toast.LENGTH_SHORT).show()
+                                            }
                                         }
                                     }
                                 },
