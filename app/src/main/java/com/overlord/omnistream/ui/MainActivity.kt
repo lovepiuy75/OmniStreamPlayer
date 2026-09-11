@@ -5,6 +5,8 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -86,6 +88,38 @@ class MainActivity : ComponentActivity() {
                 val ytSubscriptions by app.database.subscriptionDao().getByTypeFlow("YOUTUBE").collectAsState(initial = emptyList())
                 val isPlaying by playbackController.isPlaying.collectAsState()
                 val currentItem by playbackController.currentMediaItem.collectAsState()
+
+                // 系統檔案選擇器 (SAF)：讓使用者直接從「下載」或任何資料夾挑選備份檔，受系統授權 100% 讀取
+                val filePickerLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.OpenDocument()
+                ) { uri ->
+                    if (uri != null) {
+                        lifecycleScope.launch(Dispatchers.IO) {
+                            try {
+                                val inputStream = contentResolver.openInputStream(uri)
+                                if (inputStream != null) {
+                                    val count = repo.backupManager.restoreFromStream(inputStream)
+                                    withContext(Dispatchers.Main) {
+                                        if (count > 0) {
+                                            Toast.makeText(this@MainActivity, "🎉 還原成功！已完整恢復 $count 筆訂閱（含 YouTube 與雲端）及清單！", Toast.LENGTH_LONG).show()
+                                        } else {
+                                            Toast.makeText(this@MainActivity, "檔案解析完成，未發現新的資料或格式不符", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                } else {
+                                    withContext(Dispatchers.Main) {
+                                        Toast.makeText(this@MainActivity, "無法開啟所選檔案", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                                withContext(Dispatchers.Main) {
+                                    Toast.makeText(this@MainActivity, "還原發生錯誤: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
+                    }
+                }
 
                 // 當全螢幕播放器開啟時，按 Android 返回鍵收合播放器回到當前分頁，避免退出 App
                 BackHandler(enabled = showFullPlayer) {
@@ -288,16 +322,7 @@ class MainActivity : ComponentActivity() {
                                     }
                                 },
                                 onManualRestore = {
-                                    lifecycleScope.launch(Dispatchers.IO) {
-                                        val count = repo.backupManager.restoreBackupIfAvailable()
-                                        withContext(Dispatchers.Main) {
-                                            if (count > 0) {
-                                                Toast.makeText(this@MainActivity, "還原成功！已恢復 $count 筆訂閱與設定", Toast.LENGTH_LONG).show()
-                                            } else {
-                                                Toast.makeText(this@MainActivity, "未找到有效的備份檔案或資料已存在", Toast.LENGTH_SHORT).show()
-                                            }
-                                        }
-                                    }
+                                    filePickerLauncher.launch(arrayOf("application/json", "text/*", "*/*"))
                                 }
                             )
                             2 -> YouTubeScreen(
@@ -373,6 +398,21 @@ class MainActivity : ComponentActivity() {
                                             Toast.makeText(this@MainActivity, "頻道檢查完成！共新增 $totalNew 首最新曲目", Toast.LENGTH_SHORT).show()
                                         }
                                     }
+                                },
+                                onManualBackup = {
+                                    lifecycleScope.launch(Dispatchers.IO) {
+                                        val ok = repo.backupManager.createBackup()
+                                        withContext(Dispatchers.Main) {
+                                            if (ok) {
+                                                Toast.makeText(this@MainActivity, "備份成功！已存至 Download/omnistream_backup.json", Toast.LENGTH_LONG).show()
+                                            } else {
+                                                Toast.makeText(this@MainActivity, "備份失敗，請檢視權限", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    }
+                                },
+                                onManualRestore = {
+                                    filePickerLauncher.launch(arrayOf("application/json", "text/*", "*/*"))
                                 }
                             )
                         }

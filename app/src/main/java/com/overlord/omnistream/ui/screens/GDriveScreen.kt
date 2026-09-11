@@ -148,7 +148,7 @@ fun GDriveScreen(
                 onClick = onManualRestore,
                 modifier = Modifier.weight(1f)
             ) {
-                Text("🔄 手動還原設定", color = CyanAccent, fontSize = 12.sp)
+                Text("🔄 從檔案還原", color = CyanAccent, fontSize = 12.sp)
             }
         }
 

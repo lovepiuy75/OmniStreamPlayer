@@ -126,14 +126,38 @@ class ConfigBackupManager(private val context: Context, private val database: Ap
      * 若本機存在備份且目前資料庫為空，無縫還原
      */
     suspend fun restoreBackupIfAvailable(): Int = withContext(Dispatchers.IO) {
-        var restoredCount = 0
         val targetFile = getBackupFiles().firstOrNull { it.exists() && it.length() > 0 } ?: return@withContext 0
-
         try {
             val content = targetFile.readText(Charsets.UTF_8)
-            val rootJson = JSONObject(content)
+            return@withContext restoreBackupFromJsonString(content)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            0
+        }
+    }
 
-            // 1. 還原 Subscriptions
+    /**
+     * 從任意 InputStream（如 SAF 選擇器返回的 content:// Uri）讀取並還原
+     */
+    suspend fun restoreFromStream(inputStream: java.io.InputStream): Int = withContext(Dispatchers.IO) {
+        try {
+            val content = inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+            restoreBackupFromJsonString(content)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            0
+        }
+    }
+
+    /**
+     * 核心 JSON 解析還原引擎：相容 Google Drive、YouTube 頻道/清單、播放群組與各別項目
+     */
+    suspend fun restoreBackupFromJsonString(jsonString: String): Int = withContext(Dispatchers.IO) {
+        var restoredCount = 0
+        try {
+            val rootJson = JSONObject(jsonString)
+
+            // 1. 還原 Subscriptions (含 Google Drive 與 YouTube 頻道/清單)
             val subsArray = rootJson.optJSONArray("subscriptions")
             if (subsArray != null) {
                 for (i in 0 until subsArray.length()) {
@@ -198,7 +222,6 @@ class ConfigBackupManager(private val context: Context, private val database: Ap
         } catch (e: Exception) {
             e.printStackTrace()
         }
-
         restoredCount
     }
 }

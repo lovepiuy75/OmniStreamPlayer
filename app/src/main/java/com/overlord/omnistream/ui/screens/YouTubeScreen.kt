@@ -26,7 +26,9 @@ fun YouTubeScreen(
     onDeleteSubscription: (id: String) -> Unit,
     onImportPlaylist: (playlistUrlOrId: String, name: String) -> Unit,
     onSyncVideos: () -> Unit,
-    isSyncing: Boolean = false
+    isSyncing: Boolean = false,
+    onManualBackup: () -> Unit = {},
+    onManualRestore: () -> Unit = {}
 ) {
     var selectedTab by remember { mutableIntStateOf(0) } // 0: 頻道追蹤 (含時間因子), 1: 匯入播放清單
 
@@ -185,6 +187,26 @@ fun YouTubeScreen(
                         Spacer(modifier = Modifier.width(6.dp))
                         Text("檢查全部更新", color = RedAccent)
                     }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedButton(
+                    onClick = onManualBackup,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("💾 備份設定 (含YT/雲端)", color = RedAccent, fontSize = 11.sp)
+                }
+                OutlinedButton(
+                    onClick = onManualRestore,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("🔄 從檔案還原", color = RedAccent, fontSize = 11.sp)
                 }
             }
 
