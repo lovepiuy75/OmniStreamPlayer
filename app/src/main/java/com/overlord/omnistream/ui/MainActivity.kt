@@ -195,6 +195,7 @@ class MainActivity : ComponentActivity() {
                                 groups = groups,
                                 selectedGroupId = currentGroupId,
                                 currentPlayingId = currentItem?.mediaId,
+                                isPlayerPlaying = isPlaying,
                                 onSelectGroup = { currentGroupId = it },
                                 onCreateGroup = { name ->
                                     lifecycleScope.launch(Dispatchers.IO) {
@@ -206,6 +207,13 @@ class MainActivity : ComponentActivity() {
                                 items = playlist,
                                 onItemClick = { index ->
                                     val clicked = playlist[index]
+                                    // 1. 若點擊的是當前正在播/停的同一首曲目，直接執行 Toggle (暫停/續播)，無需重新解析或緩衝
+                                    if (currentItem?.mediaId == clicked.id) {
+                                        playbackController.toggleOrPlayItemAtIndex(playlist, index)
+                                        return@PlaylistScreen
+                                    }
+
+                                    // 2. 若為不同曲目，且為 YouTube 需動態更新音訊 URL
                                     if (clicked.mediaUri.contains("youtube.com/watch") || clicked.mediaUri.isBlank()) {
                                         lifecycleScope.launch(Dispatchers.IO) {
                                             val vid = com.overlord.omnistream.data.youtube.YouTubeAudioExtractor.extractVideoId(clicked.id.ifBlank { clicked.mediaUri })

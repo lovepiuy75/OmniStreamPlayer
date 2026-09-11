@@ -23,6 +23,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.border
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Pause
 import com.overlord.omnistream.core.model.MediaSourceType
 import com.overlord.omnistream.core.model.PlaylistItem
 import com.overlord.omnistream.data.local.entity.PlaylistGroupEntity
@@ -33,6 +35,7 @@ fun PlaylistScreen(
     groups: List<PlaylistGroupEntity>,
     selectedGroupId: String,
     currentPlayingId: String? = null,
+    isPlayerPlaying: Boolean = false,
     onSelectGroup: (String) -> Unit,
     onCreateGroup: (name: String) -> Unit,
     items: List<PlaylistItem>,
@@ -54,37 +57,32 @@ fun PlaylistScreen(
             .background(BgDark)
             .padding(16.dp)
     ) {
-        // 頂部多清單切換選單與操作列 (穩定版 Box + DropdownMenu，杜絕 M3 實驗性 API 簽名不相容閃退)
+        // 頂部清單切換與管理列
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(modifier = Modifier.weight(1f)) {
-                OutlinedCard(
+                Button(
                     onClick = { isDropdownExpanded = true },
-                    colors = CardDefaults.outlinedCardColors(containerColor = CardDark),
-                    modifier = Modifier.fillMaxWidth()
+                    colors = ButtonDefaults.buttonColors(containerColor = CardDark),
+                    shape = RoundedCornerShape(8.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 14.dp, vertical = 12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "$currentGroupName (${items.size})",
-                            color = TextPrimary,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                        Icon(
-                            imageVector = Icons.Default.ArrowDropDown,
-                            contentDescription = "選擇清單",
-                            tint = CyanAccent
-                        )
-                    }
+                    Text(
+                        text = "📁 $currentGroupName",
+                        color = TextPrimary,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Icon(
+                        imageVector = Icons.Default.ArrowDropDown,
+                        contentDescription = "切換清單",
+                        tint = CyanAccent
+                    )
                 }
 
                 DropdownMenu(
@@ -92,25 +90,30 @@ fun PlaylistScreen(
                     onDismissRequest = { isDropdownExpanded = false },
                     modifier = Modifier.background(CardDark)
                 ) {
-                    DropdownMenuItem(
-                        text = { Text("預設清單", color = TextPrimary) },
-                        onClick = {
-                            onSelectGroup("default")
-                            isDropdownExpanded = false
-                        }
-                    )
                     groups.forEach { group ->
                         DropdownMenuItem(
-                            text = { Text(group.name, color = TextPrimary) },
+                            text = {
+                                Text(
+                                    text = group.name,
+                                    color = if (group.id == selectedGroupId) CyanAccent else TextPrimary,
+                                    fontWeight = if (group.id == selectedGroupId) FontWeight.Bold else FontWeight.Normal
+                                )
+                            },
                             onClick = {
                                 onSelectGroup(group.id)
                                 isDropdownExpanded = false
                             }
                         )
                     }
-                    Divider(color = SurfaceDark)
+                    HorizontalDivider(color = SurfaceDark)
                     DropdownMenuItem(
-                        text = { Text("＋ 新增播放清單...", color = CyanAccent) },
+                        text = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Add, contentDescription = null, tint = CyanAccent, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("建立新播放清單", color = CyanAccent)
+                            }
+                        },
                         onClick = {
                             isDropdownExpanded = false
                             showCreateDialog = true
@@ -121,7 +124,7 @@ fun PlaylistScreen(
 
             Spacer(modifier = Modifier.width(8.dp))
 
-            // 雲端硬碟一鍵同步按鈕
+            // 同步雲端有聲書按鈕
             IconButton(
                 onClick = onSyncCloud,
                 enabled = !isSyncing,
@@ -132,15 +135,19 @@ fun PlaylistScreen(
                 if (isSyncing) {
                     CircularProgressIndicator(
                         modifier = Modifier.size(20.dp),
-                        strokeWidth = 2.dp,
-                        color = CyanAccent
+                        color = CyanAccent,
+                        strokeWidth = 2.dp
                     )
                 } else {
-                    Icon(Icons.Default.Sync, contentDescription = "同步雲端硬碟", tint = CyanAccent)
+                    Icon(
+                        Icons.Default.Sync,
+                        contentDescription = "同步雲端有聲書",
+                        tint = CyanAccent
+                    )
                 }
             }
 
-            Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(6.dp))
 
             // 掃描本機按鈕
             IconButton(
@@ -166,10 +173,12 @@ fun PlaylistScreen(
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 itemsIndexed(items) { index, item ->
+                    val isCurrent = (item.id == currentPlayingId)
                     PlaylistItemRow(
                         item = item,
                         index = index + 1,
-                        isPlaying = (item.id == currentPlayingId),
+                        isCurrent = isCurrent,
+                        isPlaying = isCurrent && isPlayerPlaying,
                         onClick = { onItemClick(index) },
                         onDelete = { onDeleteItem(item.id) }
                     )
@@ -219,6 +228,7 @@ fun PlaylistScreen(
 fun PlaylistItemRow(
     item: PlaylistItem,
     index: Int,
+    isCurrent: Boolean = false,
     isPlaying: Boolean = false,
     onClick: () -> Unit,
     onDelete: () -> Unit
@@ -228,18 +238,18 @@ fun PlaylistItemRow(
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
             .then(
-                if (isPlaying) Modifier.border(1.dp, CyanAccent, RoundedCornerShape(8.dp))
+                if (isCurrent) Modifier.border(1.dp, CyanAccent, RoundedCornerShape(8.dp))
                 else Modifier
             )
-            .background(if (isPlaying) SurfaceDark else CardDark)
+            .background(if (isCurrent) SurfaceDark else CardDark)
             .clickable { onClick() }
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        if (isPlaying) {
+        if (isCurrent) {
             Icon(
-                imageVector = Icons.Default.VolumeUp,
-                contentDescription = "播放中",
+                imageVector = if (isPlaying) Icons.Default.VolumeUp else Icons.Default.PlayArrow,
+                contentDescription = if (isPlaying) "播放中" else "已暫停",
                 tint = CyanAccent,
                 modifier = Modifier
                     .width(28.dp)
@@ -257,16 +267,16 @@ fun PlaylistItemRow(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = item.title,
-                color = if (isPlaying) CyanAccent else TextPrimary,
+                color = if (isCurrent) CyanAccent else TextPrimary,
                 fontSize = 15.sp,
-                fontWeight = if (isPlaying) FontWeight.Bold else FontWeight.Medium,
+                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
-                if (isPlaying) {
+                if (isCurrent) {
                     Text(
-                        text = "[播放中]",
+                        text = if (isPlaying) "[播放中]" else "[已暫停]",
                         color = CyanAccent,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold

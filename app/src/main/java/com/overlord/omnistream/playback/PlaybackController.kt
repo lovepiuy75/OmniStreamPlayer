@@ -178,19 +178,54 @@ class PlaybackController(private val context: Context) {
     fun skipToNext() = runOnMainThread { mediaController?.seekToNextMediaItem() }
     fun skipToPrevious() = runOnMainThread { mediaController?.seekToPreviousMediaItem() }
 
+    fun toggleOrPlayItemAtIndex(items: List<PlaylistItem>, index: Int) {
+        runOnMainThread {
+            val controller = mediaController ?: return@runOnMainThread
+            if (index !in items.indices) return@runOnMainThread
+            val target = items[index]
+            val currentMedia = controller.currentMediaItem
+
+            // 若點擊的是當前正在播/停的同一首曲目 -> 執行 Toggle (播放/暫停切換)
+            if (currentMedia != null && currentMedia.mediaId == target.id) {
+                if (controller.isPlaying) {
+                    controller.pause()
+                } else {
+                    controller.play()
+                }
+                return@runOnMainThread
+            }
+
+            // 若為不同曲目 -> 切換曲目播放
+            playItemAtIndex(items, index)
+        }
+    }
+
     fun playItemAtIndex(items: List<PlaylistItem>, index: Int) {
         runOnMainThread {
             val controller = mediaController ?: return@runOnMainThread
-            if (controller.mediaItemCount == items.size && index < items.size) {
-                val target = items[index]
+            if (index !in items.indices) return@runOnMainThread
+            val target = items[index]
+
+            // 1. 若當前 MediaController 佇列與傳入 items 大小相同且該位置 mediaId 一致，直接 seekToDefaultPosition 播放
+            if (controller.mediaItemCount == items.size) {
                 val current = controller.getMediaItemAt(index)
-                val currentUri = current.localConfiguration?.uri?.toString()
-                if (current.mediaId == target.id && currentUri == target.mediaUri) {
+                if (current.mediaId == target.id) {
                     controller.seekToDefaultPosition(index)
                     controller.play()
                     return@runOnMainThread
                 }
             }
+
+            // 2. 檢查佇列中是否已有該 target.id（例如清單大小不完全吻合但佇列中存在此曲）
+            for (i in 0 until controller.mediaItemCount) {
+                if (controller.getMediaItemAt(i).mediaId == target.id) {
+                    controller.seekToDefaultPosition(i)
+                    controller.play()
+                    return@runOnMainThread
+                }
+            }
+
+            // 3. 佇列中沒有此曲或清單變更，重建佇列並指定 startIndex 播放
             setPlaylistAndPlay(items, startIndex = index)
         }
     }
