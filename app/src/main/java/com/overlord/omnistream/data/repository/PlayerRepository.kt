@@ -42,6 +42,11 @@ class PlayerRepository(
         backupManager.createBackup()
     }
 
+    suspend fun renamePlaylistGroup(id: String, newName: String) {
+        groupDao.updateName(id, newName)
+        backupManager.createBackup()
+    }
+
     suspend fun deletePlaylistGroup(id: String) {
         groupDao.deleteById(id)
         playlistDao.clearGroup(id)

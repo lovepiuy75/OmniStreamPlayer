@@ -15,6 +15,9 @@ interface PlaylistGroupDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(group: PlaylistGroupEntity)
 
+    @Query("UPDATE playlist_groups SET name = :newName WHERE id = :id")
+    suspend fun updateName(id: String, newName: String)
+
     @Query("DELETE FROM playlist_groups WHERE id = :id")
     suspend fun deleteById(id: String)
 }

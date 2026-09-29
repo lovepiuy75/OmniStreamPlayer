@@ -10,6 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -38,6 +39,7 @@ fun PlaylistScreen(
     isPlayerPlaying: Boolean = false,
     onSelectGroup: (String) -> Unit,
     onCreateGroup: (name: String) -> Unit,
+    onRenameGroup: (id: String, newName: String) -> Unit = { _, _ -> },
     items: List<PlaylistItem>,
     onItemClick: (Int) -> Unit,
     onDeleteItem: (String) -> Unit,
@@ -46,6 +48,9 @@ fun PlaylistScreen(
     onSyncCloud: () -> Unit = {}
 ) {
     var showCreateDialog by remember { mutableStateOf(false) }
+    var showRenameDialog by remember { mutableStateOf(false) }
+    var targetRenameGroupId by remember { mutableStateOf("") }
+    var targetRenameGroupName by remember { mutableStateOf("") }
     var newGroupName by remember { mutableStateOf("") }
     var isDropdownExpanded by remember { mutableStateOf(false) }
 
@@ -93,11 +98,34 @@ fun PlaylistScreen(
                     groups.forEach { group ->
                         DropdownMenuItem(
                             text = {
-                                Text(
-                                    text = group.name,
-                                    color = if (group.id == selectedGroupId) CyanAccent else TextPrimary,
-                                    fontWeight = if (group.id == selectedGroupId) FontWeight.Bold else FontWeight.Normal
-                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = group.name,
+                                        color = if (group.id == selectedGroupId) CyanAccent else TextPrimary,
+                                        fontWeight = if (group.id == selectedGroupId) FontWeight.Bold else FontWeight.Normal,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    IconButton(
+                                        onClick = {
+                                            isDropdownExpanded = false
+                                            targetRenameGroupId = group.id
+                                            targetRenameGroupName = group.name
+                                            showRenameDialog = true
+                                        },
+                                        modifier = Modifier.size(24.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Edit,
+                                            contentDescription = "修改名稱",
+                                            tint = CyanAccent,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
                             },
                             onClick = {
                                 onSelectGroup(group.id)
@@ -120,6 +148,22 @@ fun PlaylistScreen(
                         }
                     )
                 }
+            }
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            // 修改當前清單名稱快捷按鈕
+            IconButton(
+                onClick = {
+                    targetRenameGroupId = selectedGroupId
+                    targetRenameGroupName = currentGroupName
+                    showRenameDialog = true
+                },
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(CardDark)
+            ) {
+                Icon(Icons.Default.Edit, contentDescription = "修改目前清單名稱", tint = CyanAccent)
             }
 
             Spacer(modifier = Modifier.width(8.dp))
@@ -216,6 +260,41 @@ fun PlaylistScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showCreateDialog = false }) {
+                    Text("取消", color = TextSecondary)
+                }
+            },
+            containerColor = CardDark
+        )
+    }
+
+    // 修改播放清單名稱 Dialog
+    if (showRenameDialog) {
+        AlertDialog(
+            onDismissRequest = { showRenameDialog = false },
+            title = { Text("修改播放清單名稱", color = TextPrimary) },
+            text = {
+                OutlinedTextField(
+                    value = targetRenameGroupName,
+                    onValueChange = { targetRenameGroupName = it },
+                    label = { Text("新名稱") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (targetRenameGroupName.isNotBlank()) {
+                            onRenameGroup(targetRenameGroupId, targetRenameGroupName.trim())
+                            showRenameDialog = false
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = CyanAccent)
+                ) {
+                    Text("儲存", color = BgDark)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRenameDialog = false }) {
                     Text("取消", color = TextSecondary)
                 }
             },

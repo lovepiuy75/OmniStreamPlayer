@@ -204,6 +204,14 @@ class MainActivity : ComponentActivity() {
                                         currentGroupId = gid
                                     }
                                 },
+                                onRenameGroup = { gid, newName ->
+                                    lifecycleScope.launch(Dispatchers.IO) {
+                                        repo.renamePlaylistGroup(gid, newName)
+                                        withContext(Dispatchers.Main) {
+                                            Toast.makeText(this@MainActivity, "播放清單已更名為：$newName", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                },
                                 items = playlist,
                                 onItemClick = { index ->
                                     val clicked = playlist[index]
@@ -366,32 +374,102 @@ class MainActivity : ComponentActivity() {
                                         }
                                     }
                                 },
-                                onImportPlaylist = { playlistInput, name ->
+                                onImportPlaylist = { playlistInput, customName ->
                                     lifecycleScope.launch(Dispatchers.IO) {
                                         val cleanPid = com.overlord.omnistream.data.youtube.YouTubePlaylistParser.extractPlaylistId(playlistInput)
-                                        app.database.subscriptionDao().insert(
-                                            SubscriptionEntity(
-                                                id = cleanPid,
-                                                name = name,
-                                                type = "YOUTUBE",
-                                                isPlaylist = true,
-                                                publicUrl = playlistInput,
-                                                lastSyncedTime = System.currentTimeMillis()
-                                            )
-                                        )
-                                        val videos = repo.ytPlaylistParser.fetchPlaylistVideos(cleanPid, name)
-                                        repo.addItemsToPlaylist(videos, currentGroupId)
+                                        val existing = app.database.subscriptionDao().getAll().firstOrNull { it.id == cleanPid }
+                                        
                                         withContext(Dispatchers.Main) {
-                                            Toast.makeText(this@MainActivity, "播放清單匯入成功！共加入 ${videos.size} 首曲目", Toast.LENGTH_SHORT).show()
+                                            Toast.makeText(this@MainActivity, "正在解析播放清單與頻道資訊...", Toast.LENGTH_SHORT).show()
+                                        }
+
+                                        val info = repo.ytPlaylistParser.fetchPlaylistDetails(cleanPid, customName)
+                                        if (info.items.isEmpty()) {
+                                            withContext(Dispatchers.Main) {
+                                                Toast.makeText(this@MainActivity, "未能解析到曲目，請確認清單為公開或網址正確", Toast.LENGTH_LONG).show()
+                                            }
+                                            return@launch
+                                        }
+
+                                        val currentItems = repo.getPlaylistItems(currentGroupId)
+                                        val currentIds = currentItems.map { it.id }.toSet()
+                                        val newVideos = info.items.filter { it.id !in currentIds }
+
+                                        if (existing != null) {
+                                            // 已加入過：防重複新增記錄，直接進行增量曲目掃描
+                                            if (newVideos.isNotEmpty()) {
+                                                repo.addItemsToPlaylist(newVideos, currentGroupId)
+                                                app.database.subscriptionDao().updateLastSyncedTime(cleanPid, System.currentTimeMillis())
+                                                withContext(Dispatchers.Main) {
+                                                    Toast.makeText(this@MainActivity, "清單已在記錄中。增量掃描完成：新增 ${newVideos.size} 首新曲目！", Toast.LENGTH_LONG).show()
+                                                }
+                                            } else {
+                                                withContext(Dispatchers.Main) {
+                                                    Toast.makeText(this@MainActivity, "此播放清單已在記錄中，且曲目已全部收錄，無新增曲目。", Toast.LENGTH_SHORT).show()
+                                                }
+                                            }
+                                        } else {
+                                            // 新清單：自動呈現反查頻道名稱與標題
+                                            val displayName = when {
+                                                customName.isNotBlank() && customName != "YouTube 清單" -> {
+                                                    if (info.channelName.isNotBlank()) "[$customName] ${info.channelName}" else customName
+                                                }
+                                                info.channelName.isNotBlank() && info.title.isNotBlank() -> "[${info.channelName}] ${info.title}"
+                                                info.title.isNotBlank() -> info.title
+                                                info.channelName.isNotBlank() -> "[${info.channelName}] 播放清單"
+                                                else -> "YouTube 播放清單 #$cleanPid"
+                                            }
+
+                                            app.database.subscriptionDao().insert(
+                                                SubscriptionEntity(
+                                                    id = cleanPid,
+                                                    name = displayName,
+                                                    type = "YOUTUBE",
+                                                    isPlaylist = true,
+                                                    publicUrl = playlistInput,
+                                                    lastSyncedTime = System.currentTimeMillis()
+                                                )
+                                            )
+                                            repo.addItemsToPlaylist(info.items, currentGroupId)
+                                            withContext(Dispatchers.Main) {
+                                                Toast.makeText(this@MainActivity, "成功加入「$displayName」！共匯入 ${info.items.size} 首曲目", Toast.LENGTH_LONG).show()
+                                            }
+                                        }
+                                    }
+                                },
+                                onSyncSinglePlaylist = { playlistId ->
+                                    lifecycleScope.launch(Dispatchers.IO) {
+                                        val sub = app.database.subscriptionDao().getAll().firstOrNull { it.id == playlistId }
+                                        val subName = sub?.name ?: playlistId
+                                        withContext(Dispatchers.Main) {
+                                            Toast.makeText(this@MainActivity, "正在檢查「$subName」新曲目...", Toast.LENGTH_SHORT).show()
+                                        }
+                                        val info = repo.ytPlaylistParser.fetchPlaylistDetails(playlistId)
+                                        val currentIds = repo.getPlaylistItems(currentGroupId).map { it.id }.toSet()
+                                        val newVideos = info.items.filter { it.id !in currentIds }
+                                        if (newVideos.isNotEmpty()) {
+                                            repo.addItemsToPlaylist(newVideos, currentGroupId)
+                                            app.database.subscriptionDao().updateLastSyncedTime(playlistId, System.currentTimeMillis())
+                                            withContext(Dispatchers.Main) {
+                                                Toast.makeText(this@MainActivity, "「$subName」增量同步完成！新增 ${newVideos.size} 首曲目", Toast.LENGTH_SHORT).show()
+                                            }
+                                        } else {
+                                            withContext(Dispatchers.Main) {
+                                                Toast.makeText(this@MainActivity, "「$subName」已是最新狀態，無新增曲目", Toast.LENGTH_SHORT).show()
+                                            }
                                         }
                                     }
                                 },
                                 onSyncVideos = {
                                     lifecycleScope.launch(Dispatchers.IO) {
                                         isSyncingYouTube = true
-                                        val channels = app.database.subscriptionDao().getAll().filter { it.type == "YOUTUBE" && !it.isPlaylist }
+                                        val allSubs = app.database.subscriptionDao().getAll().filter { it.type == "YOUTUBE" }
+                                        val channels = allSubs.filter { !it.isPlaylist }
+                                        val playlists = allSubs.filter { it.isPlaylist }
                                         val currentIds = repo.getPlaylistItems(currentGroupId).map { it.id }.toSet()
                                         var totalNew = 0
+
+                                        // 檢查頻道更新
                                         for (ch in channels) {
                                             val videos = repo.ytRssParser.fetchChannelLatestVideos(ch.id, ch.name, ch.sinceTimestamp)
                                             val newVideos = videos.filter { it.id !in currentIds }
@@ -401,9 +479,21 @@ class MainActivity : ComponentActivity() {
                                             }
                                             app.database.subscriptionDao().updateLastSyncedTime(ch.id, System.currentTimeMillis())
                                         }
+
+                                        // 檢查播放清單更新
+                                        for (pl in playlists) {
+                                            val info = repo.ytPlaylistParser.fetchPlaylistDetails(pl.id)
+                                            val newVideos = info.items.filter { it.id !in currentIds }
+                                            if (newVideos.isNotEmpty()) {
+                                                repo.addItemsToPlaylist(newVideos, currentGroupId)
+                                                totalNew += newVideos.size
+                                            }
+                                            app.database.subscriptionDao().updateLastSyncedTime(pl.id, System.currentTimeMillis())
+                                        }
+
                                         isSyncingYouTube = false
                                         withContext(Dispatchers.Main) {
-                                            Toast.makeText(this@MainActivity, "頻道檢查完成！共新增 $totalNew 首最新曲目", Toast.LENGTH_SHORT).show()
+                                            Toast.makeText(this@MainActivity, "檢查完成！共新增 $totalNew 首最新曲目", Toast.LENGTH_SHORT).show()
                                         }
                                     }
                                 },

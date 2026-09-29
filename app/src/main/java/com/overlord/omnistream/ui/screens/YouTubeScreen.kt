@@ -26,6 +26,7 @@ fun YouTubeScreen(
     onDeleteSubscription: (id: String) -> Unit,
     onImportPlaylist: (playlistUrlOrId: String, name: String) -> Unit,
     onSyncVideos: () -> Unit,
+    onSyncSinglePlaylist: ((playlistId: String) -> Unit)? = null,
     isSyncing: Boolean = false,
     onManualBackup: () -> Unit = {},
     onManualRestore: () -> Unit = {}
@@ -340,12 +341,29 @@ fun YouTubeScreen(
             Spacer(modifier = Modifier.height(16.dp))
 
             // 已匯入播放清單區塊
-            Text(
-                text = "已加入的播放清單 (${playlists.size})",
-                color = TextPrimary,
-                fontSize = 16.sp,
-                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "已加入的播放清單 (${playlists.size})",
+                    color = TextPrimary,
+                    fontSize = 16.sp,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+                )
+
+                if (playlists.isNotEmpty()) {
+                    TextButton(
+                        onClick = onSyncVideos,
+                        enabled = !isSyncing
+                    ) {
+                        Icon(Icons.Default.Sync, contentDescription = "同步全部", tint = AmberAccent, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(if (isSyncing) "檢查中..." else "檢查清單新曲目", color = AmberAccent, fontSize = 12.sp)
+                    }
+                }
+            }
 
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -404,9 +422,19 @@ fun YouTubeScreen(
                                     )
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text(
-                                        text = "✦ 已匯入至播放清單",
+                                        text = "✦ 點擊右側同步圖示可增量檢查新曲目",
                                         color = AmberAccent,
                                         fontSize = 10.sp
+                                    )
+                                }
+                                IconButton(
+                                    onClick = { onSyncSinglePlaylist?.invoke(pl.id) ?: onImportPlaylist(pl.id, pl.name) },
+                                    enabled = !isSyncing
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Sync,
+                                        contentDescription = "檢查此清單新曲目",
+                                        tint = AmberAccent
                                     )
                                 }
                                 IconButton(onClick = { onDeleteSubscription(pl.id) }) {
