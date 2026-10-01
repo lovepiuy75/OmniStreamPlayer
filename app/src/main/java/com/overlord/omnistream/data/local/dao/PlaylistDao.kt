@@ -30,6 +30,9 @@ interface PlaylistDao {
     @Query("DELETE FROM playlist_items WHERE id = :id")
     suspend fun deleteById(id: String)
 
+    @Query("DELETE FROM playlist_items WHERE id IN (:ids)")
+    suspend fun deleteByIds(ids: List<String>)
+
     @Query("DELETE FROM playlist_items WHERE playlistGroupId = :groupId")
     suspend fun clearGroup(groupId: String)
 

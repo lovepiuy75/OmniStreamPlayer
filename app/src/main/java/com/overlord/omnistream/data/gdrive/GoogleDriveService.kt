@@ -68,6 +68,71 @@ class GoogleDriveService(private val client: OkHttpClient = OkHttpClient()) {
     }
 
     /**
+     * 嘗試解析 Google Drive 資料夾的真實名稱
+     * 1. 優先透過 Drive v3 API 獲取資料夾 metadata
+     * 2. 備援透過公開資料夾 HTML 解析 og:title 或 title
+     */
+    suspend fun fetchFolderName(folderIdOrUrl: String): String? = withContext(Dispatchers.IO) {
+        val folderId = extractFolderId(folderIdOrUrl)
+        val token = currentAccessToken
+
+        // 1. 嘗試 Drive v3 API
+        try {
+            val urlBuilder = "https://www.googleapis.com/drive/v3/files/$folderId".toHttpUrlOrNull()?.newBuilder()
+            if (urlBuilder != null) {
+                urlBuilder.addQueryParameter("fields", "name")
+                if (token == null) {
+                    urlBuilder.addQueryParameter("key", PUBLIC_DRIVE_API_KEY)
+                }
+                val reqBuilder = Request.Builder().url(urlBuilder.build())
+                if (token != null) {
+                    reqBuilder.addHeader("Authorization", "Bearer $token")
+                }
+                val resp = client.newCall(reqBuilder.build()).execute()
+                if (resp.isSuccessful) {
+                    val body = resp.body?.string().orEmpty()
+                    val json = JSONObject(body)
+                    val name = json.optString("name").trim()
+                    if (name.isNotBlank()) return@withContext name
+                }
+            }
+        } catch (e: Exception) {
+            // API 獲取失敗，嘗試 HTML
+        }
+
+        // 2. 嘗試公開網頁解析
+        try {
+            val webUrl = "https://drive.google.com/drive/folders/$folderId"
+            val req = Request.Builder()
+                .url(webUrl)
+                .addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                .build()
+            val resp = client.newCall(req).execute()
+            if (resp.isSuccessful) {
+                val html = resp.body?.string().orEmpty()
+                val ogMatcher = Pattern.compile("<meta\\s+property=[\"']og:title[\"']\\s+content=[\"']([^\"']+)[\"']").matcher(html)
+                if (ogMatcher.find()) {
+                    val title = ogMatcher.group(1)?.replace(" - Google 雲端硬碟", "")?.replace(" - Google Drive", "")?.trim()
+                    if (!title.isNullOrBlank() && title != "Google 雲端硬碟" && title != "Google Drive") {
+                        return@withContext title
+                    }
+                }
+                val titleMatcher = Pattern.compile("<title>([^<]+)</title>").matcher(html)
+                if (titleMatcher.find()) {
+                    val title = titleMatcher.group(1)?.replace(" - Google 雲端硬碟", "")?.replace(" - Google Drive", "")?.trim()
+                    if (!title.isNullOrBlank() && title != "Google 雲端硬碟" && title != "Google Drive") {
+                        return@withContext title
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
+        return@withContext null
+    }
+
+    /**
      * 抓取 Google Drive 指定資料夾內音訊檔案（支援 1000+ 首全量分頁與公開/私有資料夾）
      */
     suspend fun fetchFolderAudioFiles(

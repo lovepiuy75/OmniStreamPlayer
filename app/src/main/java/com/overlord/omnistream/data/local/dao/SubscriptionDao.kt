@@ -20,4 +20,7 @@ interface SubscriptionDao {
 
     @Query("UPDATE subscriptions SET lastSyncedTime = :time WHERE id = :id")
     suspend fun updateLastSyncedTime(id: String, time: Long)
+
+    @Query("UPDATE subscriptions SET name = :name WHERE id = :id")
+    suspend fun updateName(id: String, name: String)
 }

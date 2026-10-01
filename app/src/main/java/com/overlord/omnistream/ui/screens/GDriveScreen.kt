@@ -8,6 +8,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -25,12 +26,16 @@ fun GDriveScreen(
     isSyncing: Boolean,
     onAddFolder: (folderIdOrUrl: String, name: String) -> Unit,
     onDeleteFolder: (id: String) -> Unit,
+    onRenameFolder: ((id: String, newName: String) -> Unit)? = null,
     onSyncNow: () -> Unit,
     onManualBackup: () -> Unit = {},
     onManualRestore: () -> Unit = {}
 ) {
     var folderInput by remember { mutableStateOf("") }
     var folderNameInput by remember { mutableStateOf("") }
+    var showRenameDialog by remember { mutableStateOf(false) }
+    var renameTargetId by remember { mutableStateOf("") }
+    var renameTargetName by remember { mutableStateOf("") }
 
     Column(
         modifier = Modifier
@@ -182,15 +187,56 @@ fun GDriveScreen(
                         Icon(Icons.Default.CloudDone, contentDescription = null, tint = CyanAccent)
                         Spacer(modifier = Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(sub.name, color = TextPrimary, fontSize = 15.sp)
-                            Text("ID: ${sub.id.take(15)}...", color = TextSecondary, fontSize = 12.sp)
+                            Text(sub.name, color = TextPrimary, fontSize = 15.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Medium)
+                            Text("ID: ${sub.id.take(20)}...", color = TextSecondary, fontSize = 12.sp)
+                        }
+                        IconButton(onClick = {
+                            renameTargetId = sub.id
+                            renameTargetName = sub.name
+                            showRenameDialog = true
+                        }) {
+                            Icon(Icons.Default.Edit, contentDescription = "自訂加註/修改名稱", tint = CyanAccent)
                         }
                         IconButton(onClick = { onDeleteFolder(sub.id) }) {
-                            Icon(Icons.Default.Delete, contentDescription = "刪除", tint = TextSecondary)
+                            Icon(Icons.Default.Delete, contentDescription = "刪除", tint = RedAccent.copy(alpha = 0.8f))
                         }
                     }
                 }
             }
+        }
+
+        if (showRenameDialog) {
+            AlertDialog(
+                onDismissRequest = { showRenameDialog = false },
+                title = { Text("修改資料夾名稱 / 自訂加註", color = TextPrimary) },
+                text = {
+                    OutlinedTextField(
+                        value = renameTargetName,
+                        onValueChange = { renameTargetName = it },
+                        label = { Text("自訂名稱或備註") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            if (renameTargetName.isNotBlank()) {
+                                onRenameFolder?.invoke(renameTargetId, renameTargetName.trim())
+                                showRenameDialog = false
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = CyanAccent)
+                    ) {
+                        Text("儲存", color = BgDark)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showRenameDialog = false }) {
+                        Text("取消", color = TextSecondary)
+                    }
+                },
+                containerColor = CardDark
+            )
         }
     }
 }

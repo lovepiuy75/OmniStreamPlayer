@@ -145,6 +145,19 @@ class YouTubePlaylistParser(
             }
         }
 
+        // 2.5 若頻道名稱仍未反查出，從解析出的曲目創作者中最常出現者提取
+        if (resolvedChannel.isBlank()) {
+            val detectedArtist = parsedVideos.map { it.third }
+                .filter { it.isNotBlank() && it != "YouTube 播放清單" && it != "YouTube 官方/創作者" && it != resolvedTitle }
+                .groupingBy { it }
+                .eachCount()
+                .maxByOrNull { it.value }
+                ?.key
+            if (!detectedArtist.isNullOrBlank()) {
+                resolvedChannel = detectedArtist
+            }
+        }
+
         val finalTitle = resolvedTitle.ifBlank { "YouTube 播放清單" }
         val finalChannel = resolvedChannel.ifBlank { "YouTube 官方/創作者" }
 

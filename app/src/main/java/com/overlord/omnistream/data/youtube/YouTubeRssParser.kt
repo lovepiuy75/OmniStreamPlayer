@@ -38,41 +38,71 @@ class YouTubeRssParser(
         }
     }
 
-    suspend fun resolveRealChannelId(channelIdOrUrl: String): String = withContext(Dispatchers.IO) {
+data class YouTubeChannelInfo(
+    val channelId: String,
+    val channelTitle: String
+)
+
+    suspend fun resolveChannelInfo(channelIdOrUrl: String): YouTubeChannelInfo = withContext(Dispatchers.IO) {
         val trimmed = channelIdOrUrl.trim()
         val directMatcher = CHANNEL_ID_PATTERN.matcher(trimmed)
-        if (directMatcher.find()) {
-            return@withContext directMatcher.group()
+        val directId = if (directMatcher.find()) directMatcher.group() else null
+
+        val targetUrl = when {
+            trimmed.startsWith("http") -> trimmed
+            directId != null -> "https://www.youtube.com/channel/$directId"
+            else -> "https://www.youtube.com/${if (trimmed.startsWith("@")) "" else "@"}$trimmed"
         }
 
-        // 若輸入為 @handle 或自訂網址，自動從頻道頁面 HTML 解析出真實 UC 開頭 channelId
-        val handleUrl = if (trimmed.startsWith("http")) {
-            trimmed
-        } else {
-            "https://www.youtube.com/${if (trimmed.startsWith("@")) "" else "@"}$trimmed"
-        }
+        var resolvedId = directId ?: trimmed
+        var resolvedTitle = ""
 
         try {
             val handleRequest = Request.Builder()
-                .url(handleUrl)
-                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                .url(targetUrl)
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36")
+                .header("Accept-Language", "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7")
                 .build()
             val handleResp = client.newCall(handleRequest).execute()
-            val handleHtml = handleResp.body?.string() ?: ""
+            val handleHtml = handleResp.body?.string().orEmpty()
 
-            var m = CANONICAL_CHANNEL_PATTERN.matcher(handleHtml)
-            if (m.find()) return@withContext m.group(1) ?: trimmed
+            if (directId == null) {
+                var m = CANONICAL_CHANNEL_PATTERN.matcher(handleHtml)
+                if (m.find()) resolvedId = m.group(1) ?: trimmed
+                else {
+                    m = EXTERNAL_ID_PATTERN.matcher(handleHtml)
+                    if (m.find()) resolvedId = m.group(1) ?: trimmed
+                    else {
+                        m = BROWSE_ID_PATTERN.matcher(handleHtml)
+                        if (m.find()) resolvedId = m.group(1) ?: trimmed
+                    }
+                }
+            }
 
-            m = EXTERNAL_ID_PATTERN.matcher(handleHtml)
-            if (m.find()) return@withContext m.group(1) ?: trimmed
-
-            m = BROWSE_ID_PATTERN.matcher(handleHtml)
-            if (m.find()) return@withContext m.group(1) ?: trimmed
+            // 提取頻道真實名稱
+            val ogMatcher = Pattern.compile("<meta\\s+property=[\"']og:title[\"']\\s+content=[\"']([^\"']+)[\"']").matcher(handleHtml)
+            if (ogMatcher.find()) {
+                resolvedTitle = ogMatcher.group(1)?.replace(" - YouTube", "")?.trim().orEmpty()
+            }
+            if (resolvedTitle.isBlank()) {
+                val titleMatcher = Pattern.compile("<title>([^<]+)</title>").matcher(handleHtml)
+                if (titleMatcher.find()) {
+                    resolvedTitle = titleMatcher.group(1)?.replace(" - YouTube", "")?.trim().orEmpty()
+                }
+            }
         } catch (e: Exception) {
             e.printStackTrace()
         }
 
-        return@withContext trimmed
+        if (resolvedTitle.isBlank() || resolvedTitle == "YouTube") {
+            resolvedTitle = if (trimmed.startsWith("@")) trimmed else "YouTuber (${resolvedId.takeLast(6)})"
+        }
+
+        YouTubeChannelInfo(channelId = resolvedId, channelTitle = resolvedTitle)
+    }
+
+    suspend fun resolveRealChannelId(channelIdOrUrl: String): String {
+        return resolveChannelInfo(channelIdOrUrl).channelId
     }
 
     suspend fun fetchChannelLatestVideos(

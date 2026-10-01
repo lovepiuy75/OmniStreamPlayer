@@ -216,17 +216,24 @@ class ConfigBackupManager(private val context: Context, private val database: Ap
             }
 
             // 2. 還原 Groups
+            val restoredGroupIds = mutableSetOf<String>()
             val groupsArray = rootJson.optJSONArray("playlist_groups")
             if (groupsArray != null) {
                 for (i in 0 until groupsArray.length()) {
                     val obj = groupsArray.getJSONObject(i)
+                    val gid = obj.getString("id")
                     val entity = PlaylistGroupEntity(
-                        id = obj.getString("id"),
+                        id = gid,
                         name = obj.getString("name"),
                         createdAt = obj.optLong("createdAt", System.currentTimeMillis())
                     )
                     database.playlistGroupDao().insert(entity)
+                    restoredGroupIds.add(gid)
                 }
+            }
+            if (!restoredGroupIds.contains("default")) {
+                database.playlistGroupDao().insert(PlaylistGroupEntity("default", "預設清單"))
+                restoredGroupIds.add("default")
             }
 
             // 3. 還原 Playlist Items
@@ -235,6 +242,11 @@ class ConfigBackupManager(private val context: Context, private val database: Ap
                 val items = mutableListOf<PlaylistItemEntity>()
                 for (i in 0 until itemsArray.length()) {
                     val obj = itemsArray.getJSONObject(i)
+                    val gid = obj.optString("playlistGroupId", "default").ifBlank { "default" }
+                    if (!restoredGroupIds.contains(gid)) {
+                        database.playlistGroupDao().insert(PlaylistGroupEntity(gid, "播放清單 #$gid"))
+                        restoredGroupIds.add(gid)
+                    }
                     items.add(
                         PlaylistItemEntity(
                             id = obj.getString("id"),
@@ -248,7 +260,7 @@ class ConfigBackupManager(private val context: Context, private val database: Ap
                             ytChannelId = obj.optString("ytChannelId").takeIf { it.isNotBlank() },
                             sortOrder = obj.optInt("sortOrder", i),
                             addedTime = obj.optLong("addedTime", System.currentTimeMillis()),
-                            playlistGroupId = obj.optString("playlistGroupId", "default")
+                            playlistGroupId = gid
                         )
                     )
                 }

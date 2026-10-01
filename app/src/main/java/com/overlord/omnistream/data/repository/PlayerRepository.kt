@@ -120,9 +120,33 @@ class PlayerRepository(
         backupManager.createBackup()
     }
 
+    suspend fun removeItemsFromPlaylist(ids: List<String>) {
+        if (ids.isNotEmpty()) {
+            playlistDao.deleteByIds(ids)
+            backupManager.createBackup()
+        }
+    }
+
     suspend fun clearPlaylist(groupId: String = "default") {
         playlistDao.clearGroup(groupId)
         backupManager.createBackup()
+    }
+
+    suspend fun updateSubscriptionName(id: String, name: String) {
+        subscriptionDao.updateName(id, name)
+        backupManager.createBackup()
+    }
+
+    suspend fun deleteSubscription(id: String) {
+        subscriptionDao.deleteById(id)
+        backupManager.createBackup()
+    }
+
+    suspend fun ensureDefaultGroup() {
+        val existing = groupDao.getAll()
+        if (existing.isEmpty()) {
+            groupDao.insert(PlaylistGroupEntity(id = "default", name = "預設清單"))
+        }
     }
 
     suspend fun updateItemMediaUri(id: String, mediaUri: String) {

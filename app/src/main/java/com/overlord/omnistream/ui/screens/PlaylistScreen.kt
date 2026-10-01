@@ -1,6 +1,7 @@
 package com.overlord.omnistream.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -9,9 +10,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Checklist
+import androidx.compose.material.icons.filled.ClearAll
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.LibraryMusic
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -21,11 +28,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.border
-import androidx.compose.material.icons.filled.Sync
-import androidx.compose.material.icons.filled.VolumeUp
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Pause
 import com.overlord.omnistream.core.model.MediaSourceType
 import com.overlord.omnistream.core.model.PlaylistItem
 import com.overlord.omnistream.data.local.entity.PlaylistGroupEntity
@@ -40,9 +42,12 @@ fun PlaylistScreen(
     onSelectGroup: (String) -> Unit,
     onCreateGroup: (name: String) -> Unit,
     onRenameGroup: (id: String, newName: String) -> Unit = { _, _ -> },
+    onDeleteGroup: (id: String) -> Unit = {},
+    onClearGroup: (id: String) -> Unit = {},
     items: List<PlaylistItem>,
     onItemClick: (Int) -> Unit,
     onDeleteItem: (String) -> Unit,
+    onBatchDeleteItems: (List<String>) -> Unit = {},
     onScanLocalAudio: () -> Unit,
     isSyncing: Boolean = false,
     onSyncCloud: () -> Unit = {},
@@ -54,6 +59,17 @@ fun PlaylistScreen(
     var targetRenameGroupName by remember { mutableStateOf("") }
     var newGroupName by remember { mutableStateOf("") }
     var isDropdownExpanded by remember { mutableStateOf(false) }
+
+    // 批量管理狀態
+    var isBatchMode by remember { mutableStateOf(false) }
+    val selectedItemIds = remember { mutableStateListOf<String>() }
+
+    // 清空與刪除清單確認 Dialog
+    var showDeleteGroupDialog by remember { mutableStateOf(false) }
+    var targetDeleteGroupId by remember { mutableStateOf("") }
+    var targetDeleteGroupName by remember { mutableStateOf("") }
+    var showClearGroupDialog by remember { mutableStateOf(false) }
+    var showBatchDeleteDialog by remember { mutableStateOf(false) }
 
     val currentGroupName = groups.find { it.id == selectedGroupId }?.name ?: "預設清單"
 
@@ -126,6 +142,25 @@ fun PlaylistScreen(
                                             modifier = Modifier.size(16.dp)
                                         )
                                     }
+                                    if (groups.size > 1) {
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        IconButton(
+                                            onClick = {
+                                                isDropdownExpanded = false
+                                                targetDeleteGroupId = group.id
+                                                targetDeleteGroupName = group.name
+                                                showDeleteGroupDialog = true
+                                            },
+                                            modifier = Modifier.size(24.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Delete,
+                                                contentDescription = "刪除清單",
+                                                tint = RedAccent.copy(alpha = 0.8f),
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
                                 }
                             },
                             onClick = {
@@ -148,10 +183,41 @@ fun PlaylistScreen(
                             showCreateDialog = true
                         }
                     )
+                    HorizontalDivider(color = SurfaceDark)
+                    DropdownMenuItem(
+                        text = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.ClearAll, contentDescription = null, tint = AmberAccent, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("清空目前清單曲目", color = AmberAccent)
+                            }
+                        },
+                        onClick = {
+                            isDropdownExpanded = false
+                            showClearGroupDialog = true
+                        }
+                    )
+                    if (groups.size > 1) {
+                        DropdownMenuItem(
+                            text = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.Delete, contentDescription = null, tint = RedAccent, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("刪除目前播放清單", color = RedAccent)
+                                }
+                            },
+                            onClick = {
+                                isDropdownExpanded = false
+                                targetDeleteGroupId = selectedGroupId
+                                targetDeleteGroupName = currentGroupName
+                                showDeleteGroupDialog = true
+                            }
+                        )
+                    }
                 }
             }
 
-            Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(6.dp))
 
             // 修改當前清單名稱快捷按鈕
             IconButton(
@@ -167,7 +233,26 @@ fun PlaylistScreen(
                 Icon(Icons.Default.Edit, contentDescription = "修改目前清單名稱", tint = CyanAccent)
             }
 
-            Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(6.dp))
+
+            // 批量多選模式切換按鈕
+            IconButton(
+                onClick = {
+                    isBatchMode = !isBatchMode
+                    if (!isBatchMode) selectedItemIds.clear()
+                },
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(if (isBatchMode) CyanAccent.copy(alpha = 0.25f) else CardDark)
+            ) {
+                Icon(
+                    Icons.Default.Checklist,
+                    contentDescription = if (isBatchMode) "退出批量管理" else "批量管理曲目",
+                    tint = if (isBatchMode) CyanAccent else TextSecondary
+                )
+            }
+
+            Spacer(modifier = Modifier.width(6.dp))
 
             // 同步雲端有聲書按鈕
             IconButton(
@@ -205,7 +290,68 @@ fun PlaylistScreen(
             }
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(10.dp))
+
+        // 批量操作橫列（當開啟批量模式時呈現）
+        if (isBatchMode && items.isNotEmpty()) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = CardDark),
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = selectedItemIds.size == items.size && items.isNotEmpty(),
+                            onCheckedChange = { checked ->
+                                selectedItemIds.clear()
+                                if (checked) {
+                                    selectedItemIds.addAll(items.map { it.id })
+                                }
+                            },
+                            colors = CheckboxDefaults.colors(checkedColor = AmberAccent)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "已選 ${selectedItemIds.size} / ${items.size} 首",
+                            color = AmberAccent,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            onClick = { showBatchDeleteDialog = true },
+                            enabled = selectedItemIds.isNotEmpty(),
+                            colors = ButtonDefaults.buttonColors(containerColor = RedAccent),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(14.dp), tint = TextPrimary)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("刪除 (${selectedItemIds.size})", fontSize = 12.sp, color = TextPrimary)
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                isBatchMode = false
+                                selectedItemIds.clear()
+                            },
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Text("退出", fontSize = 12.sp, color = TextSecondary)
+                        }
+                    }
+                }
+            }
+        }
 
         if (items.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -214,7 +360,7 @@ fun PlaylistScreen(
                     modifier = Modifier.padding(24.dp)
                 ) {
                     Text(
-                        text = "目前播放清單為空",
+                        text = "目前播放清單「$currentGroupName」為空",
                         color = TextPrimary,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
@@ -247,14 +393,28 @@ fun PlaylistScreen(
             }
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                itemsIndexed(items) { index, item ->
+                itemsIndexed(items, key = { _, item -> item.id }) { index, item ->
                     val isCurrent = (item.id == currentPlayingId)
+                    val isSelected = item.id in selectedItemIds
                     PlaylistItemRow(
                         item = item,
                         index = index + 1,
                         isCurrent = isCurrent,
                         isPlaying = isCurrent && isPlayerPlaying,
-                        onClick = { onItemClick(index) },
+                        isBatchMode = isBatchMode,
+                        isSelected = isSelected,
+                        onToggleSelect = {
+                            if (isSelected) selectedItemIds.remove(item.id)
+                            else selectedItemIds.add(item.id)
+                        },
+                        onClick = {
+                            if (isBatchMode) {
+                                if (isSelected) selectedItemIds.remove(item.id)
+                                else selectedItemIds.add(item.id)
+                            } else {
+                                onItemClick(index)
+                            }
+                        },
                         onDelete = { onDeleteItem(item.id) }
                     )
                 }
@@ -279,7 +439,7 @@ fun PlaylistScreen(
                 Button(
                     onClick = {
                         if (newGroupName.isNotBlank()) {
-                            onCreateGroup(newGroupName)
+                            onCreateGroup(newGroupName.trim())
                             newGroupName = ""
                             showCreateDialog = false
                         }
@@ -332,6 +492,92 @@ fun PlaylistScreen(
             containerColor = CardDark
         )
     }
+
+    // 清空目前清單曲目確認 Dialog
+    if (showClearGroupDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearGroupDialog = false },
+            title = { Text("清空播放清單", color = TextPrimary) },
+            text = {
+                Text("確定要清空播放清單「$currentGroupName」內的所有曲目嗎？\n清單本身仍會保留。", color = TextSecondary)
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onClearGroup(selectedGroupId)
+                        showClearGroupDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = RedAccent)
+                ) {
+                    Text("確定清空", color = TextPrimary)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearGroupDialog = false }) {
+                    Text("取消", color = TextSecondary)
+                }
+            },
+            containerColor = CardDark
+        )
+    }
+
+    // 刪除整份播放清單確認 Dialog
+    if (showDeleteGroupDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteGroupDialog = false },
+            title = { Text("刪除播放清單", color = TextPrimary) },
+            text = {
+                Text("確定要徹底刪除播放清單「$targetDeleteGroupName」及其內部的所有曲目嗎？", color = TextSecondary)
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onDeleteGroup(targetDeleteGroupId)
+                        showDeleteGroupDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = RedAccent)
+                ) {
+                    Text("確定刪除", color = TextPrimary)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteGroupDialog = false }) {
+                    Text("取消", color = TextSecondary)
+                }
+            },
+            containerColor = CardDark
+        )
+    }
+
+    // 批量刪除曲目確認 Dialog
+    if (showBatchDeleteDialog) {
+        AlertDialog(
+            onDismissRequest = { showBatchDeleteDialog = false },
+            title = { Text("批量刪除曲目", color = TextPrimary) },
+            text = {
+                Text("確定要從「$currentGroupName」中移除選取的 ${selectedItemIds.size} 首曲目嗎？", color = TextSecondary)
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onBatchDeleteItems(selectedItemIds.toList())
+                        selectedItemIds.clear()
+                        isBatchMode = false
+                        showBatchDeleteDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = RedAccent)
+                ) {
+                    Text("確定刪除", color = TextPrimary)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showBatchDeleteDialog = false }) {
+                    Text("取消", color = TextSecondary)
+                }
+            },
+            containerColor = CardDark
+        )
+    }
 }
 
 @Composable
@@ -340,6 +586,9 @@ fun PlaylistItemRow(
     index: Int,
     isCurrent: Boolean = false,
     isPlaying: Boolean = false,
+    isBatchMode: Boolean = false,
+    isSelected: Boolean = false,
+    onToggleSelect: () -> Unit = {},
     onClick: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -348,15 +597,23 @@ fun PlaylistItemRow(
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
             .then(
-                if (isCurrent) Modifier.border(1.dp, CyanAccent, RoundedCornerShape(8.dp))
+                if (isSelected) Modifier.border(1.dp, AmberAccent, RoundedCornerShape(8.dp))
+                else if (isCurrent && !isBatchMode) Modifier.border(1.dp, CyanAccent, RoundedCornerShape(8.dp))
                 else Modifier
             )
-            .background(if (isCurrent) SurfaceDark else CardDark)
+            .background(if (isSelected) SurfaceDark.copy(alpha = 0.9f) else if (isCurrent && !isBatchMode) SurfaceDark else CardDark)
             .clickable { onClick() }
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        if (isCurrent) {
+        if (isBatchMode) {
+            Checkbox(
+                checked = isSelected,
+                onCheckedChange = { onToggleSelect() },
+                colors = CheckboxDefaults.colors(checkedColor = AmberAccent),
+                modifier = Modifier.padding(end = 4.dp)
+            )
+        } else if (isCurrent) {
             Icon(
                 imageVector = if (isPlaying) Icons.Default.VolumeUp else Icons.Default.PlayArrow,
                 contentDescription = if (isPlaying) "播放中" else "已暫停",
@@ -377,14 +634,14 @@ fun PlaylistItemRow(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = item.title,
-                color = if (isCurrent) CyanAccent else TextPrimary,
+                color = if (isCurrent && !isBatchMode) CyanAccent else if (isSelected) AmberAccent else TextPrimary,
                 fontSize = 15.sp,
-                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Medium,
+                fontWeight = if (isCurrent || isSelected) FontWeight.Bold else FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
-                if (isCurrent) {
+                if (isCurrent && !isBatchMode) {
                     Text(
                         text = if (isPlaying) "[播放中]" else "[已暫停]",
                         color = CyanAccent,
@@ -415,13 +672,15 @@ fun PlaylistItemRow(
             }
         }
 
-        IconButton(onClick = onDelete) {
-            Icon(
-                imageVector = Icons.Default.Delete,
-                contentDescription = "移除",
-                tint = TextSecondary,
-                modifier = Modifier.size(18.dp)
-            )
+        if (!isBatchMode) {
+            IconButton(onClick = onDelete) {
+                Icon(
+                    imageVector = Icons.Default.Delete,
+                    contentDescription = "移除",
+                    tint = TextSecondary,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
         }
     }
 }

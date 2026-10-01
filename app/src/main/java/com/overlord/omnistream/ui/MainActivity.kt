@@ -78,7 +78,9 @@ class MainActivity : ComponentActivity() {
             OmniStreamTheme {
                 var selectedTab by remember { mutableIntStateOf(0) }
                 var showFullPlayer by remember { mutableStateOf(false) }
-                var currentGroupId by remember { mutableStateOf("default") }
+                val prefs = remember { getSharedPreferences("omnistream_prefs", Context.MODE_PRIVATE) }
+                val initialGroupId = remember { prefs.getString("last_group_id", "default") ?: "default" }
+                var currentGroupId by remember { mutableStateOf(initialGroupId) }
                 var isSyncingGDrive by remember { mutableStateOf(false) }
                 var isSyncingYouTube by remember { mutableStateOf(false) }
 
@@ -89,9 +91,10 @@ class MainActivity : ComponentActivity() {
                 val isPlaying by playbackController.isPlaying.collectAsState()
                 val currentItem by playbackController.currentMediaItem.collectAsState()
 
-                // 首次啟動自動接續還原：若當前資料庫為空，自動搜尋公用 Download 目錄下的備份檔
+                // 首次啟動自動確保預設群組存在，若當前資料庫為空則自動搜尋備份檔
                 LaunchedEffect(Unit) {
                     withContext(Dispatchers.IO) {
+                        repo.ensureDefaultGroup()
                         val currentSubs = app.database.subscriptionDao().getAll().size
                         val currentItems = app.database.playlistDao().getAll().size
                         if (currentSubs == 0 && currentItems == 0) {
@@ -212,12 +215,16 @@ class MainActivity : ComponentActivity() {
                                 selectedGroupId = currentGroupId,
                                 currentPlayingId = currentItem?.mediaId,
                                 isPlayerPlaying = isPlaying,
-                                onSelectGroup = { currentGroupId = it },
+                                onSelectGroup = {
+                                    currentGroupId = it
+                                    prefs.edit().putString("last_group_id", it).apply()
+                                },
                                 onCreateGroup = { name ->
                                     lifecycleScope.launch(Dispatchers.IO) {
                                         val gid = "grp_" + UUID.randomUUID().toString().take(8)
                                         repo.createPlaylistGroup(gid, name)
                                         currentGroupId = gid
+                                        prefs.edit().putString("last_group_id", gid).apply()
                                     }
                                 },
                                 onRenameGroup = { gid, newName ->
@@ -225,6 +232,35 @@ class MainActivity : ComponentActivity() {
                                         repo.renamePlaylistGroup(gid, newName)
                                         withContext(Dispatchers.Main) {
                                             Toast.makeText(this@MainActivity, "播放清單已更名為：$newName", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                },
+                                onDeleteGroup = { gid ->
+                                    lifecycleScope.launch(Dispatchers.IO) {
+                                        repo.deletePlaylistGroup(gid)
+                                        val remaining = repo.groupDao.getAll()
+                                        val nextId = remaining.firstOrNull()?.id ?: "default"
+                                        repo.ensureDefaultGroup()
+                                        currentGroupId = nextId
+                                        prefs.edit().putString("last_group_id", nextId).apply()
+                                        withContext(Dispatchers.Main) {
+                                            Toast.makeText(this@MainActivity, "播放清單已刪除", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                },
+                                onClearGroup = { gid ->
+                                    lifecycleScope.launch(Dispatchers.IO) {
+                                        repo.clearPlaylist(gid)
+                                        withContext(Dispatchers.Main) {
+                                            Toast.makeText(this@MainActivity, "播放清單曲目已清空", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                },
+                                onBatchDeleteItems = { ids ->
+                                    lifecycleScope.launch(Dispatchers.IO) {
+                                        repo.removeItemsFromPlaylist(ids)
+                                        withContext(Dispatchers.Main) {
+                                            Toast.makeText(this@MainActivity, "已成功批量刪除 ${ids.size} 首曲目！", Toast.LENGTH_SHORT).show()
                                         }
                                     }
                                 },
@@ -313,17 +349,48 @@ class MainActivity : ComponentActivity() {
                                 onAddFolder = { folderInput, name ->
                                     lifecycleScope.launch(Dispatchers.IO) {
                                         val cleanFolderId = com.overlord.omnistream.data.gdrive.GoogleDriveService.extractFolderId(folderInput)
-                                        app.database.subscriptionDao().insert(
-                                            SubscriptionEntity(id = cleanFolderId, name = name, type = "GDRIVE", publicUrl = folderInput)
-                                        )
-                                        val added = repo.syncAndMergeFolderItems(currentGroupId, cleanFolderId, name)
-                                        withContext(Dispatchers.Main) {
-                                            Toast.makeText(this@MainActivity, "已成功加入並解析出音訊（新增 $added 首）！", Toast.LENGTH_LONG).show()
+                                        val existing = app.database.subscriptionDao().getAll().firstOrNull { it.id == cleanFolderId }
+                                        var finalName = name.trim()
+                                        if (finalName.isBlank() || finalName == "雲端資料夾") {
+                                            val autoName = repo.gdriveService.fetchFolderName(cleanFolderId)
+                                            if (!autoName.isNullOrBlank()) {
+                                                finalName = autoName
+                                            } else {
+                                                finalName = "雲端資料夾"
+                                            }
+                                        }
+                                        if (existing != null) {
+                                            val added = repo.syncAndMergeFolderItems(currentGroupId, cleanFolderId, existing.name)
+                                            withContext(Dispatchers.Main) {
+                                                Toast.makeText(this@MainActivity, "此雲端資料夾已在監控中！已執行增量同步（新增 $added 首）", Toast.LENGTH_SHORT).show()
+                                            }
+                                        } else {
+                                            app.database.subscriptionDao().insert(
+                                                SubscriptionEntity(id = cleanFolderId, name = finalName, type = "GDRIVE", publicUrl = folderInput)
+                                            )
+                                            val added = repo.syncAndMergeFolderItems(currentGroupId, cleanFolderId, finalName)
+                                            repo.backupManager.createBackup()
+                                            withContext(Dispatchers.Main) {
+                                                Toast.makeText(this@MainActivity, "已成功加入「$finalName」並載入音訊（新增 $added 首）！", Toast.LENGTH_LONG).show()
+                                            }
                                         }
                                     }
                                 },
                                 onDeleteFolder = { id ->
-                                    lifecycleScope.launch(Dispatchers.IO) { app.database.subscriptionDao().deleteById(id) }
+                                    lifecycleScope.launch(Dispatchers.IO) {
+                                        repo.deleteSubscription(id)
+                                        withContext(Dispatchers.Main) {
+                                            Toast.makeText(this@MainActivity, "已移除資料夾監控", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                },
+                                onRenameFolder = { id, newName ->
+                                    lifecycleScope.launch(Dispatchers.IO) {
+                                        repo.updateSubscriptionName(id, newName)
+                                        withContext(Dispatchers.Main) {
+                                            Toast.makeText(this@MainActivity, "資料夾名稱已更新為：$newName", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
                                 },
                                 onSyncNow = {
                                     lifecycleScope.launch(Dispatchers.IO) {
@@ -365,31 +432,64 @@ class MainActivity : ComponentActivity() {
                                 isSyncing = isSyncingYouTube,
                                 onAddChannel = { channelInput, name, onlyNew ->
                                     lifecycleScope.launch(Dispatchers.IO) {
-                                        val resolvedId = repo.ytRssParser.resolveRealChannelId(channelInput)
-                                        val sinceTs = if (onlyNew) System.currentTimeMillis() else null
-                                        app.database.subscriptionDao().insert(
-                                            SubscriptionEntity(
-                                                id = resolvedId,
-                                                name = name,
-                                                type = "YOUTUBE",
-                                                isPlaylist = false,
-                                                publicUrl = channelInput,
-                                                sinceTimestamp = sinceTs,
-                                                lastSyncedTime = System.currentTimeMillis()
-                                            )
-                                        )
-                                        val videos = repo.ytRssParser.fetchChannelLatestVideos(resolvedId, name, sinceTs)
-                                        repo.addItemsToPlaylist(videos, currentGroupId)
                                         withContext(Dispatchers.Main) {
-                                            Toast.makeText(this@MainActivity, "已訂閱！已載入 ${videos.size} 首影片至清單", Toast.LENGTH_SHORT).show()
+                                            Toast.makeText(this@MainActivity, "正在查詢 YouTuber 頻道資訊...", Toast.LENGTH_SHORT).show()
+                                        }
+                                        val channelInfo = repo.ytRssParser.resolveChannelInfo(channelInput)
+                                        val resolvedId = channelInfo.channelId
+                                        val finalName = if (name.isNotBlank() && name != "YouTuber") name.trim() else channelInfo.channelTitle
+                                        val existing = app.database.subscriptionDao().getAll().firstOrNull { it.id == resolvedId }
+                                        val sinceTs = if (onlyNew) System.currentTimeMillis() else null
+
+                                        if (existing != null) {
+                                            val videos = repo.ytRssParser.fetchChannelLatestVideos(resolvedId, existing.name, sinceTs)
+                                            val currentItems = repo.getPlaylistItems(currentGroupId)
+                                            val currentIds = currentItems.map { it.id }.toSet()
+                                            val newVideos = videos.filter { it.id !in currentIds }
+                                            if (newVideos.isNotEmpty()) {
+                                                repo.addItemsToPlaylist(newVideos, currentGroupId)
+                                                withContext(Dispatchers.Main) {
+                                                    Toast.makeText(this@MainActivity, "「${existing.name}」已在追蹤清單中！增量加入 ${newVideos.size} 首新影片", Toast.LENGTH_SHORT).show()
+                                                }
+                                            } else {
+                                                withContext(Dispatchers.Main) {
+                                                    Toast.makeText(this@MainActivity, "「${existing.name}」已在追蹤清單中，目前曲目皆已收錄，無新增影片", Toast.LENGTH_SHORT).show()
+                                                }
+                                            }
+                                        } else {
+                                            app.database.subscriptionDao().insert(
+                                                SubscriptionEntity(
+                                                    id = resolvedId,
+                                                    name = finalName,
+                                                    type = "YOUTUBE",
+                                                    isPlaylist = false,
+                                                    publicUrl = channelInput,
+                                                    sinceTimestamp = sinceTs,
+                                                    lastSyncedTime = System.currentTimeMillis()
+                                                )
+                                            )
+                                            val videos = repo.ytRssParser.fetchChannelLatestVideos(resolvedId, finalName, sinceTs)
+                                            repo.addItemsToPlaylist(videos, currentGroupId)
+                                            repo.backupManager.createBackup()
+                                            withContext(Dispatchers.Main) {
+                                                Toast.makeText(this@MainActivity, "已成功追蹤「$finalName」！已載入 ${videos.size} 首影片至清單", Toast.LENGTH_SHORT).show()
+                                            }
                                         }
                                     }
                                 },
                                 onDeleteSubscription = { id ->
                                     lifecycleScope.launch(Dispatchers.IO) {
-                                        app.database.subscriptionDao().deleteById(id)
+                                        repo.deleteSubscription(id)
                                         withContext(Dispatchers.Main) {
                                             Toast.makeText(this@MainActivity, "已移除追蹤紀錄", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                },
+                                onRenameSubscription = { id, newName ->
+                                    lifecycleScope.launch(Dispatchers.IO) {
+                                        repo.updateSubscriptionName(id, newName)
+                                        withContext(Dispatchers.Main) {
+                                            Toast.makeText(this@MainActivity, "名稱已更新為：$newName", Toast.LENGTH_SHORT).show()
                                         }
                                     }
                                 },

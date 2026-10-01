@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Subscriptions
 import androidx.compose.material.icons.filled.Sync
@@ -24,6 +25,7 @@ fun YouTubeScreen(
     subscriptions: List<SubscriptionEntity>,
     onAddChannel: (channelIdOrUrl: String, name: String, onlyNew: Boolean) -> Unit,
     onDeleteSubscription: (id: String) -> Unit,
+    onRenameSubscription: ((id: String, newName: String) -> Unit)? = null,
     onImportPlaylist: (playlistUrlOrId: String, name: String) -> Unit,
     onSyncVideos: () -> Unit,
     onSyncSinglePlaylist: ((playlistId: String) -> Unit)? = null,
@@ -39,6 +41,11 @@ fun YouTubeScreen(
 
     var playlistInput by remember { mutableStateOf("") }
     var playlistNameInput by remember { mutableStateOf("") }
+
+    var showRenameDialog by remember { mutableStateOf(false) }
+    var renameTargetId by remember { mutableStateOf("") }
+    var renameTargetName by remember { mutableStateOf("") }
+    var renameDialogTitle by remember { mutableStateOf("") }
 
     val channels = remember(subscriptions) { subscriptions.filter { !it.isPlaylist } }
     val playlists = remember(subscriptions) { subscriptions.filter { it.isPlaylist } }
@@ -273,6 +280,18 @@ fun YouTubeScreen(
                                         fontSize = 10.sp
                                     )
                                 }
+                                IconButton(onClick = {
+                                    renameTargetId = sub.id
+                                    renameTargetName = sub.name
+                                    renameDialogTitle = "修改頻道名稱 / 自訂備註"
+                                    showRenameDialog = true
+                                }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Edit,
+                                        contentDescription = "修改名稱",
+                                        tint = RedAccent
+                                    )
+                                }
                                 IconButton(onClick = { onDeleteSubscription(sub.id) }) {
                                     Icon(
                                         imageVector = Icons.Default.Delete,
@@ -427,6 +446,18 @@ fun YouTubeScreen(
                                         fontSize = 10.sp
                                     )
                                 }
+                                IconButton(onClick = {
+                                    renameTargetId = pl.id
+                                    renameTargetName = pl.name
+                                    renameDialogTitle = "修改清單名稱 / 自訂備註"
+                                    showRenameDialog = true
+                                }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Edit,
+                                        contentDescription = "修改名稱",
+                                        tint = AmberAccent
+                                    )
+                                }
                                 IconButton(
                                     onClick = { onSyncSinglePlaylist?.invoke(pl.id) ?: onImportPlaylist(pl.id, pl.name) },
                                     enabled = !isSyncing
@@ -450,5 +481,39 @@ fun YouTubeScreen(
                 }
             }
         }
+    }
+
+    if (showRenameDialog) {
+        AlertDialog(
+            onDismissRequest = { showRenameDialog = false },
+            title = { Text(renameDialogTitle, color = TextPrimary) },
+            text = {
+                OutlinedTextField(
+                    value = renameTargetName,
+                    onValueChange = { renameTargetName = it },
+                    label = { Text("自訂名稱或備註") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (renameTargetName.isNotBlank()) {
+                            onRenameSubscription?.invoke(renameTargetId, renameTargetName.trim())
+                            showRenameDialog = false
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = CyanAccent)
+                ) {
+                    Text("儲存", color = BgDark)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRenameDialog = false }) {
+                    Text("取消", color = TextSecondary)
+                }
+            },
+            containerColor = CardDark
+        )
     }
 }
