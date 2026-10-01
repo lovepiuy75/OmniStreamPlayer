@@ -89,6 +89,22 @@ class MainActivity : ComponentActivity() {
                 val isPlaying by playbackController.isPlaying.collectAsState()
                 val currentItem by playbackController.currentMediaItem.collectAsState()
 
+                // 首次啟動自動接續還原：若當前資料庫為空，自動搜尋公用 Download 目錄下的備份檔
+                LaunchedEffect(Unit) {
+                    withContext(Dispatchers.IO) {
+                        val currentSubs = app.database.subscriptionDao().getAll().size
+                        val currentItems = app.database.playlistDao().getAll().size
+                        if (currentSubs == 0 && currentItems == 0) {
+                            val restored = repo.backupManager.restoreBackupIfAvailable()
+                            if (restored > 0) {
+                                withContext(Dispatchers.Main) {
+                                    Toast.makeText(this@MainActivity, "🎉 偵測到本機設定備份，已自動恢復 $restored 筆記錄！", Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // 系統檔案選擇器 (SAF)：讓使用者直接從「下載」或任何資料夾挑選備份檔，受系統授權 100% 讀取
                 val filePickerLauncher = rememberLauncherForActivityResult(
                     contract = ActivityResultContracts.OpenDocument()
