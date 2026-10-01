@@ -124,16 +124,53 @@ class ConfigBackupManager(private val context: Context, private val database: Ap
 
     /**
      * 若本機存在備份且目前資料庫為空，無縫還原
+     * 支援直接 File 讀取以及 MediaStore.Downloads 查詢雙軌
      */
     suspend fun restoreBackupIfAvailable(): Int = withContext(Dispatchers.IO) {
-        val targetFile = getBackupFiles().firstOrNull { it.exists() && it.length() > 0 } ?: return@withContext 0
+        // 軌道 1: 直接 File 檢查
+        for (targetFile in getBackupFiles()) {
+            try {
+                if (targetFile.exists() && targetFile.length() > 0) {
+                    val content = targetFile.readText(Charsets.UTF_8)
+                    val count = restoreBackupFromJsonString(content)
+                    if (count > 0) return@withContext count
+                }
+            } catch (e: Exception) {
+                // Scoped Storage 限制時可能拋異常，進入軌道 2
+            }
+        }
+
+        // 軌道 2: MediaStore.Downloads 查詢 (針對 Android 10+ 跨應用程式下載資料夾)
         try {
-            val content = targetFile.readText(Charsets.UTF_8)
-            return@withContext restoreBackupFromJsonString(content)
+            val queryUri = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI
+            } else {
+                android.provider.MediaStore.Files.getContentUri("external")
+            }
+            val projection = arrayOf(
+                android.provider.MediaStore.MediaColumns._ID,
+                android.provider.MediaStore.MediaColumns.DISPLAY_NAME
+            )
+            val selection = "${android.provider.MediaStore.MediaColumns.DISPLAY_NAME} = ?"
+            val selectionArgs = arrayOf(BACKUP_FILE_NAME)
+
+            context.contentResolver.query(queryUri, projection, selection, selectionArgs, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val idCol = cursor.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns._ID)
+                    val id = cursor.getLong(idCol)
+                    val contentUri = android.content.ContentUris.withAppendedId(queryUri, id)
+                    context.contentResolver.openInputStream(contentUri)?.use { input ->
+                        val content = input.bufferedReader(Charsets.UTF_8).readText()
+                        val count = restoreBackupFromJsonString(content)
+                        if (count > 0) return@withContext count
+                    }
+                }
+            }
         } catch (e: Exception) {
             e.printStackTrace()
-            0
         }
+
+        0
     }
 
     /**

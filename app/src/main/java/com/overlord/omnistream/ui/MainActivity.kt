@@ -302,6 +302,9 @@ class MainActivity : ComponentActivity() {
                                             }
                                         }
                                     }
+                                },
+                                onRestoreBackup = {
+                                    filePickerLauncher.launch(arrayOf("application/json", "text/*", "*/*"))
                                 }
                             )
                             1 -> GDriveScreen(

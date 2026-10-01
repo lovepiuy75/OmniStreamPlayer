@@ -45,7 +45,8 @@ fun PlaylistScreen(
     onDeleteItem: (String) -> Unit,
     onScanLocalAudio: () -> Unit,
     isSyncing: Boolean = false,
-    onSyncCloud: () -> Unit = {}
+    onSyncCloud: () -> Unit = {},
+    onRestoreBackup: () -> Unit = {}
 ) {
     var showCreateDialog by remember { mutableStateOf(false) }
     var showRenameDialog by remember { mutableStateOf(false) }
@@ -208,11 +209,41 @@ fun PlaylistScreen(
 
         if (items.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(
-                    text = "目前播放清單為空\n可點擊右上角掃描手機檔案，或至雲端/YouTube新增音訊",
-                    color = TextSecondary,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                )
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(24.dp)
+                ) {
+                    Text(
+                        text = "目前播放清單為空",
+                        color = TextPrimary,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "若您先前曾有使用紀錄，請點擊下方直接載入！\n（備份檔存放於手機【下載 (Download)】資料夾中的 omnistream_backup.json）",
+                        color = TextSecondary,
+                        fontSize = 12.sp,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Button(
+                        onClick = onRestoreBackup,
+                        colors = ButtonDefaults.buttonColors(containerColor = CyanAccent)
+                    ) {
+                        Icon(Icons.Default.Sync, contentDescription = null, tint = BgDark, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("一鍵載入先前保存資料", color = BgDark, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "或點擊右上角掃描本機音樂，或至「YouTube / 雲端」分頁新增內容",
+                        color = TextSecondary.copy(alpha = 0.7f),
+                        fontSize = 11.sp,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                }
             }
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
