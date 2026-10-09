@@ -33,17 +33,29 @@ jobs:
         run: |
           gradle assembleDebug --stacktrace 2>&1 | tee build.log || (echo "=== BUILD LOG FAILURE ===" && cat build.log && exit 1)
 
-      - name: Locate Debug APK
+      - name: Locate and Stage APK
         run: |
-          echo "=== SEARCHING ALL APKs IN WORKSPACE ==="
-          find . -name "*.apk"
-          echo "=== SEARCHING BUILD FOLDER ==="
-          find app/build/ -type f || true
+          echo "=== LOCATING APK ==="
+          mkdir -p dist
+          find app/build/outputs/apk/ -name "*.apk" -exec cp {} dist/ \; || true
+          ls -la dist/
 
       - name: Upload Debug APK to GitHub Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: OmniStream-app-debug
-          path: "**/build/outputs/apk/**/*.apk"
+          path: dist/*.apk
           if-no-files-found: warn
           retention-days: 14
+
+      - name: Push APK to artifacts branch
+        run: |
+          if [ -f dist/app-debug.apk ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git checkout -B apk-export
+            cp dist/app-debug.apk .
+            git add -f app-debug.apk
+            git commit -m "chore(build): export app-debug.apk [skip ci]" || true
+            git push -f origin apk-export || true
+          fi
