@@ -44,7 +44,8 @@ jobs:
 
       - name: Build Debug APK with Gradle
         run: |
-          gradle assembleDebug --stacktrace 2>&1 | tee build.log
+          set -o pipefail
+          gradle assembleDebug --stacktrace 2>&1 | tee build.log || (echo "=== GRADLE FAILED ===" && tail -n 120 build.log && exit 1)
 
       - name: Locate and Stage APK
         run: |
