@@ -11,6 +11,8 @@ jobs:
   build:
     name: Test, Build & Export APK
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -44,18 +46,34 @@ jobs:
         run: |
           gradle assembleDebug --stacktrace 2>&1 | tee build.log
 
-      - name: Upload Build Log on Failure
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-failure-log
-          path: build.log
-          if-no-files-found: warn
+      - name: Locate and Stage APK
+        run: |
+          mkdir -p dist
+          find app/build/outputs/ -type f || true
+          find . -name "*.apk" -exec cp -v {} dist/ \; || true
+          ls -la dist/
+
+      - name: Export APK to Branch
+        run: |
+          APK_FILE=$(find dist/ -name "*.apk" | head -n 1)
+          if [ -n "$APK_FILE" ]; then
+            echo "Found APK: $APK_FILE, exporting to branch..."
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git checkout --orphan apk-export || git checkout -B apk-export
+            rm -rf * .github
+            cp -v "$APK_FILE" ./app-debug.apk
+            git add -f app-debug.apk
+            git commit -m "export: app-debug.apk [skip ci]" || true
+            git push -f "https://${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" apk-export || true
+          else
+            echo "No APK found in dist/"
+          fi
 
       - name: Upload Debug APK to GitHub Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: OmniStream-app-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
+          path: dist/*.apk
+          if-no-files-found: warn
           retention-days: 14
