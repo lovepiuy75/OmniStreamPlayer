@@ -21,6 +21,7 @@ class ConfigBackupJsonTest {
             put("publicUrl", "https://drive.google.com/drive/folders/folder123")
             put("autoAddToPlaylist", true)
             put("isPlaylist", false)
+            put("targetPlaylistGroupId", "grp_gdrive")
         }
         val s2 = JSONObject().apply {
             put("id", "UC123456789")
@@ -30,6 +31,7 @@ class ConfigBackupJsonTest {
             put("autoAddToPlaylist", true)
             put("sinceTimestamp", 1720000000000L)
             put("isPlaylist", false)
+            put("targetPlaylistGroupId", "grp_yt")
         }
         val s3 = JSONObject().apply {
             put("id", "PL123456789")
@@ -38,6 +40,7 @@ class ConfigBackupJsonTest {
             put("publicUrl", "https://youtube.com/playlist?list=PL123456789")
             put("autoAddToPlaylist", true)
             put("isPlaylist", true)
+            put("targetPlaylistGroupId", "grp_yt_pl")
         }
         subs.put(s1)
         subs.put(s2)
@@ -59,6 +62,7 @@ class ConfigBackupJsonTest {
         assertEquals(1, parsed.getInt("version"))
         assertEquals(3, parsed.getJSONArray("subscriptions").length())
         assertEquals("創辦人故事", parsed.getJSONArray("subscriptions").getJSONObject(0).getString("name"))
+        assertEquals("grp_gdrive", parsed.getJSONArray("subscriptions").getJSONObject(0).getString("targetPlaylistGroupId"))
         assertEquals("科技新知頻道", parsed.getJSONArray("subscriptions").getJSONObject(1).getString("name"))
         assertEquals(1720000000000L, parsed.getJSONArray("subscriptions").getJSONObject(1).getLong("sinceTimestamp"))
         assertEquals(true, parsed.getJSONArray("subscriptions").getJSONObject(2).getBoolean("isPlaylist"))

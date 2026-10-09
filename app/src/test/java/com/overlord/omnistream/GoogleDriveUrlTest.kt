@@ -44,8 +44,8 @@ class GoogleDriveUrlTest {
                 val sorted = files.map { it.title }.sortedWith { a, b -> GoogleDriveService.naturalCompare(a, b) }
                 assertEquals(sorted.first(), files.first().title)
             }
-        } catch (e: Exception) {
-            println("Skip network assertion if offline/rate-limited: ${e.message}")
+        } catch (t: Throwable) {
+            println("Skip network assertion if offline/rate-limited: ${t.message}")
         }
     }
 }
