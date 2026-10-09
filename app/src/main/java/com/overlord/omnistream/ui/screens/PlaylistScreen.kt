@@ -48,6 +48,8 @@ fun PlaylistScreen(
     onItemClick: (Int) -> Unit,
     onDeleteItem: (String) -> Unit,
     onBatchDeleteItems: (List<String>) -> Unit = {},
+    onMoveItemToGroup: (itemId: String, newGroupId: String) -> Unit = { _, _ -> },
+    onBatchMoveItemsToGroup: (itemIds: List<String>, newGroupId: String) -> Unit = { _, _ -> },
     onScanLocalAudio: () -> Unit,
     isSyncing: Boolean = false,
     onSyncCloud: () -> Unit = {},
@@ -70,6 +72,12 @@ fun PlaylistScreen(
     var targetDeleteGroupName by remember { mutableStateOf("") }
     var showClearGroupDialog by remember { mutableStateOf(false) }
     var showBatchDeleteDialog by remember { mutableStateOf(false) }
+
+    // 移動曲目至其他清單 Dialog 狀態
+    var showMoveItemDialog by remember { mutableStateOf(false) }
+    var targetMoveItemId by remember { mutableStateOf("") }
+    var targetMoveItemTitle by remember { mutableStateOf("") }
+    var showBatchMoveDialog by remember { mutableStateOf(false) }
 
     val currentGroupName = groups.find { it.id == selectedGroupId }?.name ?: "預設清單"
 
@@ -330,6 +338,16 @@ fun PlaylistScreen(
 
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(
+                            onClick = { showBatchMoveDialog = true },
+                            enabled = selectedItemIds.isNotEmpty(),
+                            colors = ButtonDefaults.buttonColors(containerColor = CyanAccent),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Icon(Icons.Default.QueueMusic, contentDescription = null, modifier = Modifier.size(14.dp), tint = BgDark)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("移至清單 (${selectedItemIds.size})", fontSize = 12.sp, color = BgDark, fontWeight = FontWeight.Bold)
+                        }
+                        Button(
                             onClick = { showBatchDeleteDialog = true },
                             enabled = selectedItemIds.isNotEmpty(),
                             colors = ButtonDefaults.buttonColors(containerColor = RedAccent),
@@ -414,6 +432,11 @@ fun PlaylistScreen(
                             } else {
                                 onItemClick(index)
                             }
+                        },
+                        onMove = {
+                            targetMoveItemId = item.id
+                            targetMoveItemTitle = item.title
+                            showMoveItemDialog = true
                         },
                         onDelete = { onDeleteItem(item.id) }
                     )
@@ -578,6 +601,82 @@ fun PlaylistScreen(
             containerColor = CardDark
         )
     }
+
+    // 單曲移動至其他清單 Dialog
+    if (showMoveItemDialog) {
+        val otherGroups = groups.filter { it.id != selectedGroupId }
+        AlertDialog(
+            onDismissRequest = { showMoveItemDialog = false },
+            title = { Text("移動曲目至其他清單", color = TextPrimary) },
+            text = {
+                Column {
+                    Text("曲目：$targetMoveItemTitle", color = TextSecondary, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Spacer(modifier = Modifier.height(10.dp))
+                    if (otherGroups.isEmpty()) {
+                        Text("目前沒有其他播放清單，請先至頂部建立新清單！", color = TextSecondary, fontSize = 12.sp)
+                    } else {
+                        otherGroups.forEach { g ->
+                            TextButton(
+                                onClick = {
+                                    onMoveItemToGroup(targetMoveItemId, g.id)
+                                    showMoveItemDialog = false
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("📁 " + g.name, color = CyanAccent, fontSize = 14.sp)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showMoveItemDialog = false }) {
+                    Text("取消", color = TextSecondary)
+                }
+            },
+            containerColor = CardDark
+        )
+    }
+
+    // 批量移動至其他清單 Dialog
+    if (showBatchMoveDialog) {
+        val otherGroups = groups.filter { it.id != selectedGroupId }
+        AlertDialog(
+            onDismissRequest = { showBatchMoveDialog = false },
+            title = { Text("批量移動 ${selectedItemIds.size} 首曲目", color = TextPrimary) },
+            text = {
+                Column {
+                    Text("選擇目標播放清單：", color = TextSecondary, fontSize = 13.sp)
+                    Spacer(modifier = Modifier.height(10.dp))
+                    if (otherGroups.isEmpty()) {
+                        Text("目前沒有其他播放清單，請先至頂部建立新清單！", color = TextSecondary, fontSize = 12.sp)
+                    } else {
+                        otherGroups.forEach { g ->
+                            TextButton(
+                                onClick = {
+                                    onBatchMoveItemsToGroup(selectedItemIds.toList(), g.id)
+                                    selectedItemIds.clear()
+                                    isBatchMode = false
+                                    showBatchMoveDialog = false
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("📁 " + g.name, color = CyanAccent, fontSize = 14.sp)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showBatchMoveDialog = false }) {
+                    Text("取消", color = TextSecondary)
+                }
+            },
+            containerColor = CardDark
+        )
+    }
 }
 
 @Composable
@@ -590,6 +689,7 @@ fun PlaylistItemRow(
     isSelected: Boolean = false,
     onToggleSelect: () -> Unit = {},
     onClick: () -> Unit,
+    onMove: () -> Unit = {},
     onDelete: () -> Unit
 ) {
     Row(
@@ -673,6 +773,14 @@ fun PlaylistItemRow(
         }
 
         if (!isBatchMode) {
+            IconButton(onClick = onMove) {
+                Icon(
+                    imageVector = Icons.Default.QueueMusic,
+                    contentDescription = "移動清單",
+                    tint = TextSecondary,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
             IconButton(onClick = onDelete) {
                 Icon(
                     imageVector = Icons.Default.Delete,

@@ -15,7 +15,7 @@ import com.overlord.omnistream.data.local.entity.SubscriptionEntity
 
 @Database(
     entities = [PlaylistItemEntity::class, PlaybackStateEntity::class, SubscriptionEntity::class, PlaylistGroupEntity::class],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

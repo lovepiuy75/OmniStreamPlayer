@@ -23,4 +23,7 @@ interface SubscriptionDao {
 
     @Query("UPDATE subscriptions SET name = :name WHERE id = :id")
     suspend fun updateName(id: String, name: String)
+
+    @Query("UPDATE subscriptions SET targetPlaylistGroupId = :groupId WHERE id = :id")
+    suspend fun updateTargetPlaylistGroup(id: String, groupId: String)
 }

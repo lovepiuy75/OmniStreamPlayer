@@ -1,33 +1,42 @@
 package com.overlord.omnistream.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PlaylistPlay
+import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.Subscriptions
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.overlord.omnistream.data.local.entity.PlaylistGroupEntity
 import com.overlord.omnistream.data.local.entity.SubscriptionEntity
 import com.overlord.omnistream.ui.theme.*
 
 @Composable
 fun YouTubeScreen(
     subscriptions: List<SubscriptionEntity>,
-    onAddChannel: (channelIdOrUrl: String, name: String, onlyNew: Boolean) -> Unit,
+    groups: List<PlaylistGroupEntity> = emptyList(),
+    currentGroupId: String = "default",
+    onAddChannel: (channelIdOrUrl: String, name: String, onlyNew: Boolean, targetGroupId: String, newGroupName: String?) -> Unit,
     onDeleteSubscription: (id: String) -> Unit,
     onRenameSubscription: ((id: String, newName: String) -> Unit)? = null,
-    onImportPlaylist: (playlistUrlOrId: String, name: String) -> Unit,
+    onChangeTargetGroup: ((id: String, newGroupId: String) -> Unit)? = null,
+    onImportPlaylist: (playlistUrlOrId: String, name: String, targetGroupId: String, newGroupName: String?) -> Unit,
     onSyncVideos: () -> Unit,
+    onSyncSingleChannel: ((channelId: String) -> Unit)? = null,
     onSyncSinglePlaylist: ((playlistId: String) -> Unit)? = null,
     isSyncing: Boolean = false,
     onManualBackup: () -> Unit = {},
@@ -38,14 +47,27 @@ fun YouTubeScreen(
     var channelInput by remember { mutableStateOf("") }
     var channelNameInput by remember { mutableStateOf("") }
     var filterOnlyNew by remember { mutableStateOf(false) } // 預設關閉：載入近期影片供立即聆聽
+    
+    // 頻道目標播放清單
+    var channelTargetOption by remember { mutableStateOf("__AUTO__") }
+    var channelCustomGroupName by remember { mutableStateOf("") }
+    var isChannelTargetDropdownExpanded by remember { mutableStateOf(false) }
 
+    // 匯入播放清單目標
     var playlistInput by remember { mutableStateOf("") }
     var playlistNameInput by remember { mutableStateOf("") }
+    var playlistTargetOption by remember { mutableStateOf("__AUTO__") }
+    var playlistCustomGroupName by remember { mutableStateOf("") }
+    var isPlaylistTargetDropdownExpanded by remember { mutableStateOf(false) }
 
     var showRenameDialog by remember { mutableStateOf(false) }
     var renameTargetId by remember { mutableStateOf("") }
     var renameTargetName by remember { mutableStateOf("") }
     var renameDialogTitle by remember { mutableStateOf("") }
+
+    var showChangeGroupDialog by remember { mutableStateOf(false) }
+    var changeGroupSubId by remember { mutableStateOf("") }
+    var changeGroupSubName by remember { mutableStateOf("") }
 
     val channels = remember(subscriptions) { subscriptions.filter { !it.isPlaylist } }
     val playlists = remember(subscriptions) { subscriptions.filter { it.isPlaylist } }
@@ -84,7 +106,7 @@ fun YouTubeScreen(
         Spacer(modifier = Modifier.height(16.dp))
 
         if (selectedTab == 0) {
-            // 1. 頻道更新追蹤卡片 (含時間因子過濾)
+            // 1. 頻道更新追蹤卡片 (含時間因子過濾 & 目標清單)
             Card(
                 colors = CardDefaults.cardColors(containerColor = CardDark),
                 modifier = Modifier.fillMaxWidth()
@@ -98,7 +120,7 @@ fun YouTubeScreen(
                     )
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        text = "支援免 API Key 自動提取純音訊，可設定時間因子只接收新發布影片，排除歷史看過的舊片。",
+                        text = "免 API Key 自動提取純音訊，可指定存入特定播放清單，分類清楚不混雜！",
                         color = TextSecondary,
                         fontSize = 12.sp
                     )
@@ -117,6 +139,80 @@ fun YouTubeScreen(
                         label = { Text("頻道網址、@Handle 或 ID (UC...)") },
                         modifier = Modifier.fillMaxWidth()
                     )
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // 目標播放清單選擇
+                    Text(
+                        text = "指定存入的播放清單：",
+                        color = TextPrimary,
+                        fontSize = 13.sp,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Medium
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        OutlinedButton(
+                            onClick = { isChannelTargetDropdownExpanded = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(containerColor = SurfaceDark)
+                        ) {
+                            val currentLabel = when (channelTargetOption) {
+                                "__AUTO__" -> "✨ 自動以此頻道名稱建立獨立清單 (推薦)"
+                                "__CUSTOM__" -> "➕ 自訂全新播放清單名稱"
+                                else -> "📁 " + (groups.find { it.id == channelTargetOption }?.name ?: "現有清單")
+                            }
+                            Text(
+                                text = currentLabel,
+                                color = RedAccent,
+                                fontSize = 13.sp,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = RedAccent)
+                        }
+
+                        DropdownMenu(
+                            expanded = isChannelTargetDropdownExpanded,
+                            onDismissRequest = { isChannelTargetDropdownExpanded = false },
+                            modifier = Modifier.background(CardDark)
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("✨ 自動以此頻道名稱建立獨立清單", color = RedAccent) },
+                                onClick = {
+                                    channelTargetOption = "__AUTO__"
+                                    isChannelTargetDropdownExpanded = false
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("➕ 自訂全新播放清單名稱...", color = AmberAccent) },
+                                onClick = {
+                                    channelTargetOption = "__CUSTOM__"
+                                    isChannelTargetDropdownExpanded = false
+                                }
+                            )
+                            HorizontalDivider(color = SurfaceDark)
+                            groups.forEach { group ->
+                                DropdownMenuItem(
+                                    text = { Text("📁 " + group.name, color = TextPrimary) },
+                                    onClick = {
+                                        channelTargetOption = group.id
+                                        isChannelTargetDropdownExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    if (channelTargetOption == "__CUSTOM__") {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = channelCustomGroupName,
+                            onValueChange = { channelCustomGroupName = it },
+                            label = { Text("請輸入全新播放清單名稱") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+
                     Spacer(modifier = Modifier.height(10.dp))
 
                     // 時間因子選擇器
@@ -149,15 +245,17 @@ fun YouTubeScreen(
                     Button(
                         onClick = {
                             if (channelInput.isNotBlank()) {
-                                onAddChannel(channelInput, channelNameInput.ifBlank { "YouTuber" }, filterOnlyNew)
+                                val finalNewName = if (channelTargetOption == "__CUSTOM__") channelCustomGroupName.trim() else null
+                                onAddChannel(channelInput, channelNameInput.ifBlank { "YouTuber" }, filterOnlyNew, channelTargetOption, finalNewName)
                                 channelInput = ""
                                 channelNameInput = ""
+                                channelCustomGroupName = ""
                             }
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = RedAccent),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("開始追蹤並自動過濾", color = TextPrimary)
+                        Text("開始追蹤並載入至指定清單", color = TextPrimary, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
                     }
                 }
             }
@@ -240,6 +338,7 @@ fun YouTubeScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(channels, key = { it.id }) { sub ->
+                        val targetGroupName = groups.find { it.id == sub.targetPlaylistGroupId }?.name ?: "預設清單"
                         Card(
                             colors = CardDefaults.cardColors(containerColor = CardDark),
                             shape = RoundedCornerShape(8.dp),
@@ -267,17 +366,39 @@ fun YouTubeScreen(
                                         maxLines = 1
                                     )
                                     Spacer(modifier = Modifier.height(2.dp))
-                                    Text(
-                                        text = sub.id,
-                                        color = TextSecondary,
-                                        fontSize = 11.sp,
-                                        maxLines = 1
-                                    )
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.clickable {
+                                            changeGroupSubId = sub.id
+                                            changeGroupSubName = sub.name
+                                            showChangeGroupDialog = true
+                                        }
+                                    ) {
+                                        Icon(Icons.Default.QueueMusic, contentDescription = null, tint = RedAccent, modifier = Modifier.size(13.dp))
+                                        Spacer(modifier = Modifier.width(3.dp))
+                                        Text(
+                                            text = "收納至: $targetGroupName (點擊變更)",
+                                            color = RedAccent,
+                                            fontSize = 11.sp,
+                                            fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+                                        )
+                                    }
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text(
-                                        text = if (sub.sinceTimestamp != null) "⚡ 時間過濾：開啟 (只收新發布)" else "✦ 收錄全部近期影片",
+                                        text = if (sub.sinceTimestamp != null) "⚡ 時間過濾：開啟 (只收新片)" else "✦ 收錄全部近期影片",
                                         color = if (sub.sinceTimestamp != null) RedAccent else CyanAccent,
                                         fontSize = 10.sp
+                                    )
+                                }
+                                // 單一頻道檢查新片按鈕
+                                IconButton(
+                                    onClick = { onSyncSingleChannel?.invoke(sub.id) },
+                                    enabled = !isSyncing
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Sync,
+                                        contentDescription = "檢查此頻道新影片",
+                                        tint = RedAccent
                                     )
                                 }
                                 IconButton(onClick = {
@@ -305,7 +426,7 @@ fun YouTubeScreen(
                 }
             }
         } else {
-            // 匯入 YouTube 既有播放清單
+            // 匯入 YouTube 既有播放清單 (含目標清單選擇)
             Card(
                 colors = CardDefaults.cardColors(containerColor = CardDark),
                 modifier = Modifier.fillMaxWidth()
@@ -319,7 +440,7 @@ fun YouTubeScreen(
                     )
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        text = "貼入 YouTube 播放清單網址 (包含 list=PL...)，一鍵將整份清單解析為純音訊加入 App！",
+                        text = "貼入 YouTube 播放清單網址 (包含 list=PL...)，可指定存入專屬播放清單！",
                         color = TextSecondary,
                         fontSize = 12.sp
                     )
@@ -339,20 +460,96 @@ fun YouTubeScreen(
                         placeholder = { Text("https://www.youtube.com/playlist?list=PL...") },
                         modifier = Modifier.fillMaxWidth()
                     )
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // 目標播放清單選擇
+                    Text(
+                        text = "指定存入的播放清單：",
+                        color = TextPrimary,
+                        fontSize = 13.sp,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Medium
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        OutlinedButton(
+                            onClick = { isPlaylistTargetDropdownExpanded = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(containerColor = SurfaceDark)
+                        ) {
+                            val currentLabel = when (playlistTargetOption) {
+                                "__AUTO__" -> "✨ 自動以此 YouTube 清單名稱建立獨立清單 (推薦)"
+                                "__CUSTOM__" -> "➕ 自訂全新播放清單名稱"
+                                else -> "📁 " + (groups.find { it.id == playlistTargetOption }?.name ?: "現有清單")
+                            }
+                            Text(
+                                text = currentLabel,
+                                color = AmberAccent,
+                                fontSize = 13.sp,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = AmberAccent)
+                        }
+
+                        DropdownMenu(
+                            expanded = isPlaylistTargetDropdownExpanded,
+                            onDismissRequest = { isPlaylistTargetDropdownExpanded = false },
+                            modifier = Modifier.background(CardDark)
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("✨ 自動以此 YouTube 清單名稱建立獨立清單", color = AmberAccent) },
+                                onClick = {
+                                    playlistTargetOption = "__AUTO__"
+                                    isPlaylistTargetDropdownExpanded = false
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("➕ 自訂全新播放清單名稱...", color = CyanAccent) },
+                                onClick = {
+                                    playlistTargetOption = "__CUSTOM__"
+                                    isPlaylistTargetDropdownExpanded = false
+                                }
+                            )
+                            HorizontalDivider(color = SurfaceDark)
+                            groups.forEach { group ->
+                                DropdownMenuItem(
+                                    text = { Text("📁 " + group.name, color = TextPrimary) },
+                                    onClick = {
+                                        playlistTargetOption = group.id
+                                        isPlaylistTargetDropdownExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    if (playlistTargetOption == "__CUSTOM__") {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = playlistCustomGroupName,
+                            onValueChange = { playlistCustomGroupName = it },
+                            label = { Text("請輸入全新播放清單名稱") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
 
                     Button(
                         onClick = {
                             if (playlistInput.isNotBlank()) {
-                                onImportPlaylist(playlistInput, playlistNameInput.ifBlank { "YouTube 清單" })
+                                val finalNewName = if (playlistTargetOption == "__CUSTOM__") playlistCustomGroupName.trim() else null
+                                onImportPlaylist(playlistInput, playlistNameInput.ifBlank { "YouTube 清單" }, playlistTargetOption, finalNewName)
                                 playlistInput = ""
                                 playlistNameInput = ""
+                                playlistCustomGroupName = ""
                             }
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = AmberAccent),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("解析並整批匯入", color = BgDark)
+                        Text("解析並整批匯入指定清單", color = BgDark, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
                     }
                 }
             }
@@ -406,6 +603,7 @@ fun YouTubeScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(playlists, key = { it.id }) { pl ->
+                        val targetGroupName = groups.find { it.id == pl.targetPlaylistGroupId }?.name ?: "預設清單"
                         Card(
                             colors = CardDefaults.cardColors(containerColor = CardDark),
                             shape = RoundedCornerShape(8.dp),
@@ -433,18 +631,23 @@ fun YouTubeScreen(
                                         maxLines = 1
                                     )
                                     Spacer(modifier = Modifier.height(2.dp))
-                                    Text(
-                                        text = pl.id,
-                                        color = TextSecondary,
-                                        fontSize = 11.sp,
-                                        maxLines = 1
-                                    )
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        text = "✦ 點擊右側同步圖示可增量檢查新曲目",
-                                        color = AmberAccent,
-                                        fontSize = 10.sp
-                                    )
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.clickable {
+                                            changeGroupSubId = pl.id
+                                            changeGroupSubName = pl.name
+                                            showChangeGroupDialog = true
+                                        }
+                                    ) {
+                                        Icon(Icons.Default.QueueMusic, contentDescription = null, tint = AmberAccent, modifier = Modifier.size(13.dp))
+                                        Spacer(modifier = Modifier.width(3.dp))
+                                        Text(
+                                            text = "收納至: $targetGroupName (點擊變更)",
+                                            color = AmberAccent,
+                                            fontSize = 11.sp,
+                                            fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+                                        )
+                                    }
                                 }
                                 IconButton(onClick = {
                                     renameTargetId = pl.id
@@ -459,7 +662,7 @@ fun YouTubeScreen(
                                     )
                                 }
                                 IconButton(
-                                    onClick = { onSyncSinglePlaylist?.invoke(pl.id) ?: onImportPlaylist(pl.id, pl.name) },
+                                    onClick = { onSyncSinglePlaylist?.invoke(pl.id) ?: onImportPlaylist(pl.id, pl.name, pl.targetPlaylistGroupId, null) },
                                     enabled = !isSyncing
                                 ) {
                                     Icon(
@@ -510,6 +713,38 @@ fun YouTubeScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showRenameDialog = false }) {
+                    Text("取消", color = TextSecondary)
+                }
+            },
+            containerColor = CardDark
+        )
+    }
+
+    // 變更 YouTube 項目綁定播放清單 Dialog
+    if (showChangeGroupDialog) {
+        AlertDialog(
+            onDismissRequest = { showChangeGroupDialog = false },
+            title = { Text("變更「$changeGroupSubName」收納清單", color = TextPrimary) },
+            text = {
+                Column {
+                    Text("選擇後，後續更新的音訊將自動存入所選播放清單：", color = TextSecondary, fontSize = 13.sp)
+                    Spacer(modifier = Modifier.height(10.dp))
+                    groups.forEach { group ->
+                        TextButton(
+                            onClick = {
+                                onChangeTargetGroup?.invoke(changeGroupSubId, group.id)
+                                showChangeGroupDialog = false
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("📁 " + group.name, color = CyanAccent, fontSize = 14.sp)
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showChangeGroupDialog = false }) {
                     Text("取消", color = TextSecondary)
                 }
             },

@@ -44,4 +44,10 @@ interface PlaylistDao {
 
     @Query("UPDATE playlist_items SET title = :title, artist = :artist, mediaUri = :mediaUri WHERE id = :id")
     suspend fun updateItemDetails(id: String, title: String, artist: String, mediaUri: String)
+
+    @Query("UPDATE playlist_items SET playlistGroupId = :newGroupId WHERE id = :id")
+    suspend fun updateItemGroupId(id: String, newGroupId: String)
+
+    @Query("UPDATE playlist_items SET playlistGroupId = :newGroupId WHERE id IN (:ids)")
+    suspend fun updateItemsGroupId(ids: List<String>, newGroupId: String)
 }

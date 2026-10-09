@@ -137,6 +137,23 @@ class PlayerRepository(
         backupManager.createBackup()
     }
 
+    suspend fun updateSubscriptionTargetGroup(id: String, targetGroupId: String) {
+        subscriptionDao.updateTargetPlaylistGroup(id, targetGroupId)
+        backupManager.createBackup()
+    }
+
+    suspend fun moveItemToGroup(itemId: String, newGroupId: String) {
+        playlistDao.updateItemGroupId(itemId, newGroupId)
+        backupManager.createBackup()
+    }
+
+    suspend fun moveItemsToGroup(itemIds: List<String>, newGroupId: String) {
+        if (itemIds.isNotEmpty()) {
+            playlistDao.updateItemsGroupId(itemIds, newGroupId)
+            backupManager.createBackup()
+        }
+    }
+
     suspend fun deleteSubscription(id: String) {
         subscriptionDao.deleteById(id)
         backupManager.createBackup()

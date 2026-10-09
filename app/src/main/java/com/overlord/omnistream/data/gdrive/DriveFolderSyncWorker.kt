@@ -28,7 +28,8 @@ class DriveFolderSyncWorker(
 
         var newItemsCount = 0
         for (sub in gdriveSubs) {
-            val added = repo.syncAndMergeFolderItems("default", sub.id, sub.name)
+            val targetGroupId = sub.targetPlaylistGroupId.ifBlank { "default" }
+            val added = repo.syncAndMergeFolderItems(targetGroupId, sub.id, sub.name)
             newItemsCount += added
             subDao.updateLastSyncedTime(sub.id, System.currentTimeMillis())
         }

@@ -71,6 +71,7 @@ class ConfigBackupManager(private val context: Context, private val database: Ap
                 obj.put("autoAddToPlaylist", sub.autoAddToPlaylist)
                 obj.put("sinceTimestamp", sub.sinceTimestamp ?: -1L)
                 obj.put("isPlaylist", sub.isPlaylist)
+                obj.put("targetPlaylistGroupId", sub.targetPlaylistGroupId)
                 subsArray.put(obj)
             }
             rootJson.put("subscriptions", subsArray)
@@ -208,7 +209,8 @@ class ConfigBackupManager(private val context: Context, private val database: Ap
                         lastSyncedTime = obj.optLong("lastSyncedTime", 0L),
                         autoAddToPlaylist = obj.optBoolean("autoAddToPlaylist", true),
                         sinceTimestamp = sinceTs,
-                        isPlaylist = obj.optBoolean("isPlaylist", false)
+                        isPlaylist = obj.optBoolean("isPlaylist", false),
+                        targetPlaylistGroupId = obj.optString("targetPlaylistGroupId", "default").ifBlank { "default" }
                     )
                     database.subscriptionDao().insert(entity)
                     restoredCount++
