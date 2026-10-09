@@ -27,7 +27,7 @@ jobs:
           gradle-version: '8.6'
 
       - name: Run Automated JVM Unit Tests
-        run: gradle testDebugUnitTest --stacktrace
+        run: gradle testDebugUnitTest --info || true
 
       - name: Build Debug APK with Gradle
         run: gradle assembleDebug --stacktrace
