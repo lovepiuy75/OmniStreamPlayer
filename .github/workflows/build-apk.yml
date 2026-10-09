@@ -27,36 +27,15 @@ jobs:
           gradle-version: '8.6'
 
       - name: Run Automated JVM Unit Tests
-        run: gradle testDebugUnitTest --info || true
+        run: gradle testDebugUnitTest --stacktrace
 
       - name: Build Debug APK with Gradle
-        run: |
-          gradle assembleDebug --stacktrace 2>&1 | tee build.log || (echo "=== BUILD LOG FAILURE ===" && cat build.log && exit 1)
-
-      - name: Locate and Stage APK
-        run: |
-          echo "=== LOCATING APK ==="
-          mkdir -p dist
-          find app/build/outputs/ -type f || true
-          find . -name "*.apk" -exec cp -v {} dist/ \; || true
-          ls -la dist/
-
-      - name: Push APK to artifacts branch
-        run: |
-          if [ -f dist/app-debug.apk ]; then
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git checkout -B apk-export
-            cp -v dist/app-debug.apk .
-            git add -f app-debug.apk
-            git commit -m "chore(build): export app-debug.apk [skip ci]" || true
-            git push -f https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git apk-export || true
-          fi
+        run: gradle assembleDebug --stacktrace
 
       - name: Upload Debug APK to GitHub Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: OmniStream-app-debug
-          path: dist/*.apk
-          if-no-files-found: warn
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
           retention-days: 14
