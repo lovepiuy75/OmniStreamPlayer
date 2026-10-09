@@ -41,7 +41,16 @@ jobs:
           if-no-files-found: warn
 
       - name: Build Debug APK with Gradle
-        run: gradle assembleDebug --stacktrace
+        run: |
+          gradle assembleDebug --stacktrace 2>&1 | tee build.log
+
+      - name: Upload Build Log on Failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-failure-log
+          path: build.log
+          if-no-files-found: warn
 
       - name: Upload Debug APK to GitHub Artifacts
         uses: actions/upload-artifact@v4
