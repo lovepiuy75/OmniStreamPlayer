@@ -92,19 +92,25 @@ class MainActivity : ComponentActivity() {
                 val isPlaying by playbackController.isPlaying.collectAsState()
                 val currentItem by playbackController.currentMediaItem.collectAsState()
 
-                // 首次啟動自動確保預設群組存在，若當前資料庫為空則自動搜尋備份檔
+                // 首次啟動自動確保預設群組存在，若當前資料庫無訂閱或無曲目則自動進行多軌防抹除復原
                 LaunchedEffect(Unit) {
                     withContext(Dispatchers.IO) {
                         repo.ensureDefaultGroup()
-                        val currentSubs = app.database.subscriptionDao().getAll().size
-                        val currentItems = app.database.playlistDao().getAll().size
-                        if (currentSubs == 0 && currentItems == 0) {
-                            val restored = repo.backupManager.restoreBackupIfAvailable()
-                            if (restored > 0) {
+                        val currentSubs = app.database.subscriptionDao().getAll()
+                        if (currentSubs.isEmpty()) {
+                            val restoredSubs = repo.restoreSubscriptionsFromAnySource()
+                            if (restoredSubs > 0) {
                                 withContext(Dispatchers.Main) {
-                                    Toast.makeText(this@MainActivity, "🎉 偵測到本機設定備份，已自動恢復 $restored 筆記錄！", Toast.LENGTH_LONG).show()
+                                    Toast.makeText(this@MainActivity, "🎉 已自動恢復 $restoredSubs 個已監控雲端資料夾與追蹤頻道！", Toast.LENGTH_LONG).show()
                                 }
                             }
+                        } else {
+                            repo.savePersistentSubscriptionsMirror(currentSubs)
+                        }
+
+                        val currentItems = app.database.playlistDao().getAll().size
+                        if (currentItems == 0) {
+                            repo.backupManager.restoreBackupIfAvailable()
                         }
                     }
                 }
@@ -410,7 +416,7 @@ class MainActivity : ComponentActivity() {
                                                 Toast.makeText(this@MainActivity, "此雲端資料夾已在監控中！已更新目標清單並增量同步（新增 $added 首）", Toast.LENGTH_SHORT).show()
                                             }
                                         } else {
-                                            app.database.subscriptionDao().insert(
+                                            repo.saveSubscription(
                                                 SubscriptionEntity(
                                                     id = cleanFolderId,
                                                     name = finalName,
@@ -420,7 +426,6 @@ class MainActivity : ComponentActivity() {
                                                 )
                                             )
                                             val added = repo.syncAndMergeFolderItems(targetGid, cleanFolderId, finalName)
-                                            repo.backupManager.createBackup()
                                             val targetGroupName = repo.groupDao.getAll().find { it.id == targetGid }?.name ?: "清單"
                                             withContext(Dispatchers.Main) {
                                                 Toast.makeText(this@MainActivity, "已加入「$finalName」並存入「$targetGroupName」（新增 $added 首）！", Toast.LENGTH_LONG).show()
@@ -562,7 +567,7 @@ class MainActivity : ComponentActivity() {
                                                 }
                                             }
                                         } else {
-                                            app.database.subscriptionDao().insert(
+                                            repo.saveSubscription(
                                                 SubscriptionEntity(
                                                     id = resolvedId,
                                                     name = finalName,
@@ -576,7 +581,6 @@ class MainActivity : ComponentActivity() {
                                             )
                                             val videos = repo.ytRssParser.fetchChannelLatestVideos(resolvedId, finalName, sinceTs)
                                             repo.addItemsToPlaylist(videos, targetGid)
-                                            repo.backupManager.createBackup()
                                             val groupName = repo.groupDao.getAll().find { it.id == targetGid }?.name ?: "清單"
                                             withContext(Dispatchers.Main) {
                                                 Toast.makeText(this@MainActivity, "已成功追蹤「$finalName」！已載入 ${videos.size} 首影片至「$groupName」", Toast.LENGTH_SHORT).show()
@@ -674,7 +678,7 @@ class MainActivity : ComponentActivity() {
                                                 }
                                             }
                                         } else {
-                                            app.database.subscriptionDao().insert(
+                                            repo.saveSubscription(
                                                 SubscriptionEntity(
                                                     id = cleanPid,
                                                     name = displayName,
@@ -686,7 +690,6 @@ class MainActivity : ComponentActivity() {
                                                 )
                                             )
                                             repo.addItemsToPlaylist(info.items, targetGid)
-                                            repo.backupManager.createBackup()
                                             val groupName = repo.groupDao.getAll().find { it.id == targetGid }?.name ?: "清單"
                                             withContext(Dispatchers.Main) {
                                                 Toast.makeText(this@MainActivity, "成功匯入「$displayName」！共 ${info.items.size} 首存入「$groupName」", Toast.LENGTH_LONG).show()

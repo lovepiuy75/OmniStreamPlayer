@@ -319,11 +319,12 @@ fun YouTubeScreen(
             Spacer(modifier = Modifier.height(8.dp))
 
             if (channels.isEmpty()) {
-                Box(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),
-                    contentAlignment = Alignment.Center
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
                 ) {
                     Text(
                         text = "尚未追蹤任何 YouTuber 頻道。\n在上方輸入頻道名稱與網址即可開始追蹤！",
@@ -331,6 +332,30 @@ fun YouTubeScreen(
                         fontSize = 13.sp,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
                     )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("找不到先前的追蹤頻道？", color = AmberAccent, fontSize = 13.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                                Text("若曾備份過，點擊此處立即從備份檔案快速還原", color = TextSecondary, fontSize = 11.sp)
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Button(
+                                onClick = onManualRestore,
+                                colors = ButtonDefaults.buttonColors(containerColor = AmberAccent),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                            ) {
+                                Text("📂 還原", color = BgDark, fontSize = 12.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                            }
+                        }
+                    }
                 }
             } else {
                 LazyColumn(
@@ -584,11 +609,12 @@ fun YouTubeScreen(
             Spacer(modifier = Modifier.height(8.dp))
 
             if (playlists.isEmpty()) {
-                Box(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),
-                    contentAlignment = Alignment.Center
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
                 ) {
                     Text(
                         text = "尚未加入任何 YouTube 播放清單。\n在上方貼入清單網址即可匯入！",
@@ -596,6 +622,30 @@ fun YouTubeScreen(
                         fontSize = 13.sp,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
                     )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("找不到先前的播放清單？", color = AmberAccent, fontSize = 13.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                                Text("若曾備份過，點擊此處立即從備份檔案快速還原", color = TextSecondary, fontSize = 11.sp)
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Button(
+                                onClick = onManualRestore,
+                                colors = ButtonDefaults.buttonColors(containerColor = AmberAccent),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                            ) {
+                                Text("📂 還原", color = BgDark, fontSize = 12.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                            }
+                        }
+                    }
                 }
             } else {
                 LazyColumn(

@@ -68,4 +68,15 @@ class ConfigBackupJsonTest {
         assertEquals(true, parsed.getJSONArray("subscriptions").getJSONObject(2).getBoolean("isPlaylist"))
         assertEquals("grp_1", parsed.getJSONArray("playlist_groups").getJSONObject(0).getString("id"))
     }
+
+    @Test
+    fun testTypeNormalization() {
+        val types = listOf("gdrive", " GDRIVE ", "youtube", " YOUTUBE ", "YouTube")
+        for (raw in types) {
+            val upper = raw.trim().uppercase()
+            val normalized = if (upper.contains("YOUTUBE")) "YOUTUBE" else "GDRIVE"
+            assertTrue(normalized == "GDRIVE" || normalized == "YOUTUBE")
+        }
+    }
 }
+

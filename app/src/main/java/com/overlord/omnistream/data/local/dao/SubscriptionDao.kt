@@ -6,14 +6,20 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface SubscriptionDao {
-    @Query("SELECT * FROM subscriptions WHERE type = :type")
+    @Query("SELECT * FROM subscriptions WHERE UPPER(TRIM(type)) = UPPER(TRIM(:type))")
     fun getByTypeFlow(type: String): Flow<List<SubscriptionEntity>>
+
+    @Query("SELECT * FROM subscriptions")
+    fun getAllFlow(): Flow<List<SubscriptionEntity>>
 
     @Query("SELECT * FROM subscriptions")
     suspend fun getAll(): List<SubscriptionEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(subscription: SubscriptionEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(subscriptions: List<SubscriptionEntity>)
 
     @Query("DELETE FROM subscriptions WHERE id = :id")
     suspend fun deleteById(id: String)
@@ -27,3 +33,4 @@ interface SubscriptionDao {
     @Query("UPDATE subscriptions SET targetPlaylistGroupId = :groupId WHERE id = :id")
     suspend fun updateTargetPlaylistGroup(id: String, groupId: String)
 }
+

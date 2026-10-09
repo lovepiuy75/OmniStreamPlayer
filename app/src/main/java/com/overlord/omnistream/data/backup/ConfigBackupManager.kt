@@ -20,6 +20,7 @@ class ConfigBackupManager(private val context: Context, private val database: Ap
 
     companion object {
         const val BACKUP_FILE_NAME = "omnistream_backup.json"
+        const val PREV_BACKUP_FILE_NAME = "omnistream_backup_prev.json"
     }
 
     fun getBackupFiles(): List<File> {
@@ -30,20 +31,35 @@ class ConfigBackupManager(private val context: Context, private val database: Ap
             if (downloadDir != null) {
                 downloadDir.mkdirs()
                 files.add(File(downloadDir, BACKUP_FILE_NAME))
+                files.add(File(downloadDir, PREV_BACKUP_FILE_NAME))
             }
         } catch (e: Exception) {
             e.printStackTrace()
         }
 
+        // 常見的標準 Android 外部存儲路徑容錯
+        try {
+            files.add(File("/storage/emulated/0/Download", BACKUP_FILE_NAME))
+            files.add(File("/storage/emulated/0/Download", PREV_BACKUP_FILE_NAME))
+        } catch (e: Exception) {
+            // ignore
+        }
+
         // 2. 外部應用文件目錄
         context.getExternalFilesDir(null)?.let {
             files.add(File(it, BACKUP_FILE_NAME))
+            files.add(File(it, PREV_BACKUP_FILE_NAME))
+        }
+        context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)?.let {
+            files.add(File(it, BACKUP_FILE_NAME))
+            files.add(File(it, PREV_BACKUP_FILE_NAME))
         }
 
-        // 3. 內部私有目錄
+        // 3. 內部私有目錄 (最安全、永遠有權限)
         files.add(File(context.filesDir, BACKUP_FILE_NAME))
+        files.add(File(context.filesDir, PREV_BACKUP_FILE_NAME))
 
-        return files
+        return files.distinctBy { it.absolutePath }
     }
 
     /**
@@ -55,9 +71,18 @@ class ConfigBackupManager(private val context: Context, private val database: Ap
             val groups = database.playlistGroupDao().getAll()
             val items = database.playlistDao().getAll()
 
+            // 關鍵防護：若當前資料庫完全無任何資料，絕不覆蓋先前非空的備份檔案！
+            if (subs.isEmpty() && items.isEmpty()) {
+                val hasExistingData = getBackupFiles().any { it.exists() && it.length() > 50 }
+                if (hasExistingData) {
+                    return@withContext false
+                }
+            }
+
             val rootJson = JSONObject()
             rootJson.put("version", 1)
             rootJson.put("timestamp", System.currentTimeMillis())
+
 
             // 1. Subscriptions
             val subsArray = JSONArray()
@@ -108,9 +133,17 @@ class ConfigBackupManager(private val context: Context, private val database: Ap
             rootJson.put("playlist_items", itemsArray)
 
             val jsonString = rootJson.toString(2)
-            for (file in getBackupFiles()) {
+            for (file in getBackupFiles().filter { it.name == BACKUP_FILE_NAME }) {
                 try {
                     file.parentFile?.mkdirs()
+                    if (file.exists() && file.length() > 50) {
+                        val prevFile = File(file.parentFile, PREV_BACKUP_FILE_NAME)
+                        try {
+                            file.copyTo(prevFile, overwrite = true)
+                        } catch (e: Exception) {
+                            // ignore copy error
+                        }
+                    }
                     file.writeText(jsonString, Charsets.UTF_8)
                 } catch (e: Exception) {
                     e.printStackTrace()
@@ -152,8 +185,8 @@ class ConfigBackupManager(private val context: Context, private val database: Ap
                 android.provider.MediaStore.MediaColumns._ID,
                 android.provider.MediaStore.MediaColumns.DISPLAY_NAME
             )
-            val selection = "${android.provider.MediaStore.MediaColumns.DISPLAY_NAME} = ?"
-            val selectionArgs = arrayOf(BACKUP_FILE_NAME)
+            val selection = "${android.provider.MediaStore.MediaColumns.DISPLAY_NAME} = ? OR ${android.provider.MediaStore.MediaColumns.DISPLAY_NAME} = ?"
+            val selectionArgs = arrayOf(BACKUP_FILE_NAME, PREV_BACKUP_FILE_NAME)
 
             context.contentResolver.query(queryUri, projection, selection, selectionArgs, null)?.use { cursor ->
                 if (cursor.moveToFirst()) {
@@ -201,10 +234,12 @@ class ConfigBackupManager(private val context: Context, private val database: Ap
                 for (i in 0 until subsArray.length()) {
                     val obj = subsArray.getJSONObject(i)
                     val sinceTs = obj.optLong("sinceTimestamp", -1L).takeIf { it > 0 }
+                    val rawType = obj.optString("type", "GDRIVE").trim().uppercase()
+                    val normType = if (rawType.contains("YOUTUBE")) "YOUTUBE" else "GDRIVE"
                     val entity = SubscriptionEntity(
                         id = obj.getString("id"),
                         name = obj.getString("name"),
-                        type = obj.getString("type"),
+                        type = normType,
                         publicUrl = obj.optString("publicUrl").takeIf { it.isNotBlank() },
                         lastSyncedTime = obj.optLong("lastSyncedTime", 0L),
                         autoAddToPlaylist = obj.optBoolean("autoAddToPlaylist", true),
@@ -216,6 +251,7 @@ class ConfigBackupManager(private val context: Context, private val database: Ap
                     restoredCount++
                 }
             }
+
 
             // 2. 還原 Groups
             val restoredGroupIds = mutableSetOf<String>()

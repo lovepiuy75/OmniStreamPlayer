@@ -10,6 +10,7 @@ import com.overlord.omnistream.data.local.AppDatabase
 import com.overlord.omnistream.data.local.entity.PlaybackStateEntity
 import com.overlord.omnistream.data.local.entity.PlaylistGroupEntity
 import com.overlord.omnistream.data.local.entity.PlaylistItemEntity
+import com.overlord.omnistream.data.local.entity.SubscriptionEntity
 import com.overlord.omnistream.data.youtube.YouTubeAudioExtractor
 import com.overlord.omnistream.data.youtube.YouTubePlaylistParser
 import com.overlord.omnistream.data.youtube.YouTubeRssParser
@@ -17,11 +18,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
+import java.io.File
 
 class PlayerRepository(
     private val context: Context,
     private val database: AppDatabase
 ) {
+
     val gdriveService by lazy { GoogleDriveService() }
     val ytRssParser by lazy { YouTubeRssParser() }
     val ytPlaylistParser by lazy { YouTubePlaylistParser() }
@@ -127,6 +132,108 @@ class PlayerRepository(
         }
     }
 
+    // --- 永久持久化訂閱鏡像 (防資料庫被抹除核心機制) ---
+    private val persistentPrefs by lazy { context.getSharedPreferences("omnistream_persistent_meta", Context.MODE_PRIVATE) }
+    private val persistentFile by lazy { File(context.filesDir, "subscriptions_persistent.json") }
+
+    suspend fun saveSubscription(entity: SubscriptionEntity) {
+        subscriptionDao.insert(entity)
+        savePersistentSubscriptionsMirror(subscriptionDao.getAll())
+        backupManager.createBackup()
+    }
+
+    suspend fun savePersistentSubscriptionsMirror(subs: List<SubscriptionEntity>) = withContext(Dispatchers.IO) {
+        if (subs.isEmpty()) return@withContext
+        try {
+            val array = JSONArray()
+            for (s in subs) {
+                val obj = JSONObject().apply {
+                    put("id", s.id)
+                    put("name", s.name)
+                    put("type", s.type)
+                    put("publicUrl", s.publicUrl)
+                    put("lastSyncedTime", s.lastSyncedTime)
+                    put("autoAddToPlaylist", s.autoAddToPlaylist)
+                    put("sinceTimestamp", s.sinceTimestamp ?: -1L)
+                    put("isPlaylist", s.isPlaylist)
+                    put("targetPlaylistGroupId", s.targetPlaylistGroupId)
+                }
+                array.put(obj)
+            }
+            val json = array.toString(2)
+            persistentFile.writeText(json, Charsets.UTF_8)
+            persistentPrefs.edit().putString("subscriptions_mirror", json).apply()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    suspend fun restoreSubscriptionsFromAnySource(): Int = withContext(Dispatchers.IO) {
+        var restored = 0
+        // 來源 1: 內部私有檔案 subscriptions_persistent.json (永久不受外在環境影響)
+        if (persistentFile.exists() && persistentFile.length() > 10) {
+            try {
+                val json = persistentFile.readText(Charsets.UTF_8)
+                restored = restoreSubscriptionsFromJsonArrayString(json)
+                if (restored > 0) return@withContext restored
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+
+        // 來源 2: SharedPreferences 鏡像
+        val prefJson = persistentPrefs.getString("subscriptions_mirror", null)
+        if (!prefJson.isNullOrBlank() && prefJson.length > 10) {
+            try {
+                restored = restoreSubscriptionsFromJsonArrayString(prefJson)
+                if (restored > 0) return@withContext restored
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+
+        // 來源 3: ConfigBackupManager (Downloads 目錄與 MediaStore 備份)
+        restored = backupManager.restoreBackupIfAvailable()
+        if (restored > 0) {
+            savePersistentSubscriptionsMirror(subscriptionDao.getAll())
+        }
+        restored
+    }
+
+    private suspend fun restoreSubscriptionsFromJsonArrayString(jsonString: String): Int {
+        var count = 0
+        try {
+            val array = JSONArray(jsonString)
+            val list = mutableListOf<SubscriptionEntity>()
+            for (i in 0 until array.length()) {
+                val obj = array.getJSONObject(i)
+                val rawType = obj.optString("type", "GDRIVE").trim().uppercase()
+                val normType = if (rawType.contains("YOUTUBE")) "YOUTUBE" else "GDRIVE"
+                val sinceTs = obj.optLong("sinceTimestamp", -1L).takeIf { it > 0 }
+                list.add(
+                    SubscriptionEntity(
+                        id = obj.getString("id"),
+                        name = obj.getString("name"),
+                        type = normType,
+                        publicUrl = obj.optString("publicUrl").takeIf { it.isNotBlank() },
+                        lastSyncedTime = obj.optLong("lastSyncedTime", 0L),
+                        autoAddToPlaylist = obj.optBoolean("autoAddToPlaylist", true),
+                        sinceTimestamp = sinceTs,
+                        isPlaylist = obj.optBoolean("isPlaylist", false),
+                        targetPlaylistGroupId = obj.optString("targetPlaylistGroupId", "default").ifBlank { "default" }
+                    )
+                )
+                count++
+            }
+            if (list.isNotEmpty()) {
+                subscriptionDao.insertAll(list)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return count
+    }
+
     suspend fun clearPlaylist(groupId: String = "default") {
         playlistDao.clearGroup(groupId)
         backupManager.createBackup()
@@ -134,11 +241,13 @@ class PlayerRepository(
 
     suspend fun updateSubscriptionName(id: String, name: String) {
         subscriptionDao.updateName(id, name)
+        savePersistentSubscriptionsMirror(subscriptionDao.getAll())
         backupManager.createBackup()
     }
 
     suspend fun updateSubscriptionTargetGroup(id: String, targetGroupId: String) {
         subscriptionDao.updateTargetPlaylistGroup(id, targetGroupId)
+        savePersistentSubscriptionsMirror(subscriptionDao.getAll())
         backupManager.createBackup()
     }
 
@@ -156,8 +265,16 @@ class PlayerRepository(
 
     suspend fun deleteSubscription(id: String) {
         subscriptionDao.deleteById(id)
+        val remaining = subscriptionDao.getAll()
+        if (remaining.isNotEmpty()) {
+            savePersistentSubscriptionsMirror(remaining)
+        } else {
+            persistentFile.delete()
+            persistentPrefs.edit().remove("subscriptions_mirror").apply()
+        }
         backupManager.createBackup()
     }
+
 
     suspend fun ensureDefaultGroup() {
         val existing = groupDao.getAll()
