@@ -27,7 +27,16 @@ jobs:
           gradle-version: '8.6'
 
       - name: Run Automated JVM Unit Tests
-        run: gradle testDebugUnitTest --stacktrace
+        run: |
+          gradle testDebugUnitTest --info || (mkdir -p /tmp/test-results && cp -r app/build/reports/tests /tmp/test-results/ || true && exit 1)
+
+      - name: Upload Test Report on Failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-reports
+          path: app/build/reports/tests/testDebugUnitTest/
+          if-no-files-found: warn
 
       - name: Build Debug APK with Gradle
         run: gradle assembleDebug --stacktrace
