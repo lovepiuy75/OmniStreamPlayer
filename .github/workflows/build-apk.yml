@@ -37,8 +37,21 @@ jobs:
         run: |
           echo "=== LOCATING APK ==="
           mkdir -p dist
-          find app/build/outputs/apk/ -name "*.apk" -exec cp {} dist/ \; || true
+          find app/build/outputs/ -type f || true
+          find . -name "*.apk" -exec cp -v {} dist/ \; || true
           ls -la dist/
+
+      - name: Push APK to artifacts branch
+        run: |
+          if [ -f dist/app-debug.apk ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git checkout -B apk-export
+            cp -v dist/app-debug.apk .
+            git add -f app-debug.apk
+            git commit -m "chore(build): export app-debug.apk [skip ci]" || true
+            git push -f https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git apk-export || true
+          fi
 
       - name: Upload Debug APK to GitHub Artifacts
         uses: actions/upload-artifact@v4
@@ -47,15 +60,3 @@ jobs:
           path: dist/*.apk
           if-no-files-found: warn
           retention-days: 14
-
-      - name: Push APK to artifacts branch
-        run: |
-          if [ -f dist/app-debug.apk ]; then
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git checkout -B apk-export
-            cp dist/app-debug.apk .
-            git add -f app-debug.apk
-            git commit -m "chore(build): export app-debug.apk [skip ci]" || true
-            git push -f origin apk-export || true
-          fi
