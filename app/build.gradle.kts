@@ -31,8 +31,8 @@ android {
         applicationId = "com.overlord.omnistream.v3"
         minSdk = 26
         targetSdk = 34
-        versionCode = 202610091
-        versionName = "20261009_1850"
+        versionCode = 202610092
+        versionName = "20261009_1935"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
