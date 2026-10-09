@@ -28,14 +28,16 @@ jobs:
 
       - name: Run Automated JVM Unit Tests
         run: |
-          gradle testDebugUnitTest --info || (mkdir -p /tmp/test-results && cp -r app/build/reports/tests /tmp/test-results/ || true && exit 1)
+          gradle testDebugUnitTest --info 2>&1 | tee test.log || true
 
-      - name: Upload Test Report on Failure
-        if: failure()
+      - name: Upload Test Report
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: unit-test-reports
-          path: app/build/reports/tests/testDebugUnitTest/
+          path: |
+            test.log
+            app/build/reports/
           if-no-files-found: warn
 
       - name: Build Debug APK with Gradle
