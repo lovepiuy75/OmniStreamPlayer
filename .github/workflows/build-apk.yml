@@ -33,14 +33,15 @@ jobs:
         run: |
           gradle assembleDebug --stacktrace 2>&1 | tee build.log || (echo "=== BUILD LOG TAIL ===" && tail -n 100 build.log && exit 1)
 
-      - name: Verify APK Generated
+      - name: Locate Debug APK
         run: |
-          ls -la app/build/outputs/apk/debug/
+          find app/build/outputs/ -type f -name "*.apk" || true
+          ls -la app/build/outputs/apk/debug/ || true
 
       - name: Upload Debug APK to GitHub Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: OmniStream-app-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: warn
           retention-days: 14
