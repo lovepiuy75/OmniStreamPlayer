@@ -411,7 +411,10 @@ fun PlaylistScreen(
                 }
             }
         } else {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(bottom = 96.dp)
+            ) {
                 itemsIndexed(items, key = { _, item -> item.id }) { index, item ->
                     val isCurrent = (item.id == currentPlayingId)
                     val isSelected = item.id in selectedItemIds

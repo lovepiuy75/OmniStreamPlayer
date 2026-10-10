@@ -24,6 +24,12 @@ import com.overlord.omnistream.data.local.entity.PlaylistGroupEntity
 import com.overlord.omnistream.data.local.entity.SubscriptionEntity
 import com.overlord.omnistream.ui.theme.*
 
+import androidx.compose.material.icons.filled.CreateNewFolder
+import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.runtime.saveable.rememberSaveable
+
 @Composable
 fun GDriveScreen(
     subscriptions: List<SubscriptionEntity>,
@@ -47,6 +53,9 @@ fun GDriveScreen(
     var customNewGroupName by remember { mutableStateOf("") }
     var isTargetDropdownExpanded by remember { mutableStateOf(false) }
 
+    // 是否展開新增表單（預設若無資料夾則展開，已有資料夾則收合以優先展示已監控項目）
+    var isAddFormExpanded by rememberSaveable { mutableStateOf(subscriptions.isEmpty()) }
+
     var showRenameDialog by remember { mutableStateOf(false) }
     var renameTargetId by remember { mutableStateOf("") }
     var renameTargetName by remember { mutableStateOf("") }
@@ -55,247 +64,291 @@ fun GDriveScreen(
     var changeGroupFolderId by remember { mutableStateOf("") }
     var changeGroupFolderName by remember { mutableStateOf("") }
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(BgDark)
-            .padding(16.dp)
     ) {
-        Text(
-            text = "Google 雲端硬碟自動同步",
-            color = TextPrimary,
-            fontSize = 20.sp,
-            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-            modifier = Modifier.padding(bottom = 12.dp)
-        )
-
-        Card(
-            colors = CardDefaults.cardColors(containerColor = CardDark),
-            modifier = Modifier.fillMaxWidth()
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 16.dp),
+            contentPadding = PaddingValues(top = 16.dp, bottom = 96.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Column(modifier = Modifier.padding(16.dp)) {
+            item {
                 Text(
-                    text = "監控雲端資料夾 (公開連結/ID 皆可)",
-                    color = CyanAccent,
-                    fontSize = 15.sp,
-                    fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    text = "支援免登入自動抓取音訊，可指定收納至特定播放清單，分門別類不混雜！",
-                    color = TextSecondary,
-                    fontSize = 12.sp
-                )
-                Spacer(modifier = Modifier.height(10.dp))
-
-                OutlinedTextField(
-                    value = folderNameInput,
-                    onValueChange = { folderNameInput = it },
-                    label = { Text("自訂名稱 (如: 每日新知 Podcast)") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = folderInput,
-                    onValueChange = { folderInput = it },
-                    label = { Text("資料夾網址或 ID") },
-                    placeholder = { Text("https://drive.google.com/drive/folders/...") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(modifier = Modifier.height(10.dp))
-
-                // 目標播放清單選擇
-                Text(
-                    text = "指定存入的播放清單：",
+                    text = "Google 雲端硬碟自動同步",
                     color = TextPrimary,
-                    fontSize = 13.sp,
-                    fontWeight = androidx.compose.ui.text.font.FontWeight.Medium
+                    fontSize = 20.sp,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                    modifier = Modifier.padding(bottom = 4.dp)
                 )
-                Spacer(modifier = Modifier.height(4.dp))
-
-                Box(modifier = Modifier.fillMaxWidth()) {
-                    OutlinedButton(
-                        onClick = { isTargetDropdownExpanded = true },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(containerColor = SurfaceDark)
-                    ) {
-                        val currentLabel = when (selectedTargetOption) {
-                            "__AUTO__" -> "✨ 自動以此資料夾名稱建立獨立清單 (推薦)"
-                            "__CUSTOM__" -> "➕ 自訂全新播放清單名稱"
-                            else -> "📁 " + (groups.find { it.id == selectedTargetOption }?.name ?: "現有清單")
-                        }
-                        Text(
-                            text = currentLabel,
-                            color = CyanAccent,
-                            fontSize = 13.sp,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = CyanAccent)
-                    }
-
-                    DropdownMenu(
-                        expanded = isTargetDropdownExpanded,
-                        onDismissRequest = { isTargetDropdownExpanded = false },
-                        modifier = Modifier.background(CardDark)
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text("✨ 自動以此資料夾名稱建立獨立清單", color = CyanAccent) },
-                            onClick = {
-                                selectedTargetOption = "__AUTO__"
-                                isTargetDropdownExpanded = false
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("➕ 自訂全新播放清單名稱...", color = AmberAccent) },
-                            onClick = {
-                                selectedTargetOption = "__CUSTOM__"
-                                isTargetDropdownExpanded = false
-                            }
-                        )
-                        HorizontalDivider(color = SurfaceDark)
-                        groups.forEach { group ->
-                            DropdownMenuItem(
-                                text = { Text("📁 " + group.name, color = TextPrimary) },
-                                onClick = {
-                                    selectedTargetOption = group.id
-                                    isTargetDropdownExpanded = false
-                                }
-                            )
-                        }
-                    }
-                }
-
-                if (selectedTargetOption == "__CUSTOM__") {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = customNewGroupName,
-                        onValueChange = { customNewGroupName = it },
-                        label = { Text("請輸入全新播放清單名稱") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                Button(
-                    onClick = {
-                        if (folderInput.isNotBlank()) {
-                            val finalNewName = if (selectedTargetOption == "__CUSTOM__") customNewGroupName.trim() else null
-                            onAddFolder(folderInput, folderNameInput.ifBlank { "雲端資料夾" }, selectedTargetOption, finalNewName)
-                            folderInput = ""
-                            folderNameInput = ""
-                            customNewGroupName = ""
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = CyanAccent),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("新增並載入至指定清單", color = BgDark, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
-                }
             }
-        }
 
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "已監控資料夾 (${subscriptions.size})",
-                color = TextPrimary,
-                fontSize = 16.sp,
-                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
-            )
-
-            Button(
-                onClick = onSyncNow,
-                enabled = !isSyncing,
-                colors = ButtonDefaults.buttonColors(containerColor = SurfaceDark)
-            ) {
-                if (isSyncing) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(16.dp),
-                        color = CyanAccent,
-                        strokeWidth = 2.dp
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("同步中...", color = CyanAccent)
-                } else {
-                    Icon(Icons.Default.Sync, contentDescription = "同步", tint = CyanAccent, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("同步全部", color = CyanAccent)
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(6.dp))
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            OutlinedButton(
-                onClick = onManualBackup,
-                modifier = Modifier.weight(1f)
-            ) {
-                Text("💾 立即備份設定", color = CyanAccent, fontSize = 12.sp)
-            }
-            OutlinedButton(
-                onClick = onManualRestore,
-                modifier = Modifier.weight(1f)
-            ) {
-                Text("🔄 從檔案還原", color = CyanAccent, fontSize = 12.sp)
-            }
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        if (subscriptions.isEmpty()) {
-            Column(
-                modifier = Modifier.fillMaxWidth().weight(1f),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                Text(
-                    text = "尚未加入任何雲端資料夾\n貼上連結即可連續播放資料夾音訊",
-                    color = TextSecondary,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                    fontSize = 13.sp
-                )
-                Spacer(modifier = Modifier.height(16.dp))
+            // 新增資料夾 Card (可摺疊/展開)
+            item {
                 Card(
-                    colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-                    shape = RoundedCornerShape(8.dp),
+                    colors = CardDefaults.cardColors(containerColor = CardDark),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("找不到先前的雲端資料夾？", color = AmberAccent, fontSize = 13.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
-                            Text("若曾備份過，點擊此處立即從備份檔案快速還原", color = TextSecondary, fontSize = 11.sp)
-                        }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Button(
-                            onClick = onManualRestore,
-                            colors = ButtonDefaults.buttonColors(containerColor = AmberAccent),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { isAddFormExpanded = !isAddFormExpanded },
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("📂 還原", color = BgDark, fontSize = 12.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(
+                                    imageVector = if (isAddFormExpanded) Icons.Default.FolderOpen else Icons.Default.CreateNewFolder,
+                                    contentDescription = null,
+                                    tint = CyanAccent,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = if (isAddFormExpanded) "監控雲端資料夾 (公開連結/ID 皆可)" else "➕ 新增監控雲端資料夾 (點擊展開)",
+                                    color = CyanAccent,
+                                    fontSize = 15.sp,
+                                    fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+                                )
+                            }
+                            IconButton(
+                                onClick = { isAddFormExpanded = !isAddFormExpanded },
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (isAddFormExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                    contentDescription = if (isAddFormExpanded) "收合表單" else "展開表單",
+                                    tint = CyanAccent
+                                )
+                            }
+                        }
+
+                        if (isAddFormExpanded) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "支援免登入自動抓取音訊，可指定收納至特定播放清單，分門別類不混雜！",
+                                color = TextSecondary,
+                                fontSize = 12.sp
+                            )
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            OutlinedTextField(
+                                value = folderNameInput,
+                                onValueChange = { folderNameInput = it },
+                                label = { Text("自訂名稱 (如: 每日新知 Podcast)") },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            OutlinedTextField(
+                                value = folderInput,
+                                onValueChange = { folderInput = it },
+                                label = { Text("資料夾網址或 ID") },
+                                placeholder = { Text("https://drive.google.com/drive/folders/...") },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            // 目標播放清單選擇
+                            Text(
+                                text = "指定存入的播放清單：",
+                                color = TextPrimary,
+                                fontSize = 13.sp,
+                                fontWeight = androidx.compose.ui.text.font.FontWeight.Medium
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+
+                            Box(modifier = Modifier.fillMaxWidth()) {
+                                OutlinedButton(
+                                    onClick = { isTargetDropdownExpanded = true },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(8.dp),
+                                    colors = ButtonDefaults.outlinedButtonColors(containerColor = SurfaceDark)
+                                ) {
+                                    val currentLabel = when (selectedTargetOption) {
+                                        "__AUTO__" -> "✨ 自動以此資料夾名稱建立獨立清單 (推薦)"
+                                        "__CUSTOM__" -> "➕ 自訂全新播放清單名稱"
+                                        else -> "📁 " + (groups.find { it.id == selectedTargetOption }?.name ?: "現有清單")
+                                    }
+                                    Text(
+                                        text = currentLabel,
+                                        color = CyanAccent,
+                                        fontSize = 13.sp,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = CyanAccent)
+                                }
+
+                                DropdownMenu(
+                                    expanded = isTargetDropdownExpanded,
+                                    onDismissRequest = { isTargetDropdownExpanded = false },
+                                    modifier = Modifier.background(CardDark)
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text("✨ 自動以此資料夾名稱建立獨立清單", color = CyanAccent) },
+                                        onClick = {
+                                            selectedTargetOption = "__AUTO__"
+                                            isTargetDropdownExpanded = false
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("➕ 自訂全新播放清單名稱...", color = AmberAccent) },
+                                        onClick = {
+                                            selectedTargetOption = "__CUSTOM__"
+                                            isTargetDropdownExpanded = false
+                                        }
+                                    )
+                                    HorizontalDivider(color = SurfaceDark)
+                                    groups.forEach { group ->
+                                        DropdownMenuItem(
+                                            text = { Text("📁 " + group.name, color = TextPrimary) },
+                                            onClick = {
+                                                selectedTargetOption = group.id
+                                                isTargetDropdownExpanded = false
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+
+                            if (selectedTargetOption == "__CUSTOM__") {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                OutlinedTextField(
+                                    value = customNewGroupName,
+                                    onValueChange = { customNewGroupName = it },
+                                    label = { Text("請輸入全新播放清單名稱") },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(14.dp))
+
+                            Button(
+                                onClick = {
+                                    if (folderInput.isNotBlank()) {
+                                        val finalNewName = if (selectedTargetOption == "__CUSTOM__") customNewGroupName.trim() else null
+                                        onAddFolder(folderInput, folderNameInput.ifBlank { "雲端資料夾" }, selectedTargetOption, finalNewName)
+                                        folderInput = ""
+                                        folderNameInput = ""
+                                        customNewGroupName = ""
+                                        isAddFormExpanded = false
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = CyanAccent),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("新增並載入至指定清單", color = BgDark, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                            }
                         }
                     }
                 }
             }
-        } else {
-            LazyColumn(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(subscriptions) { sub ->
+
+            // 監控狀態 Header
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "已監控資料夾 (${subscriptions.size})",
+                        color = TextPrimary,
+                        fontSize = 16.sp,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+                    )
+
+                    Button(
+                        onClick = onSyncNow,
+                        enabled = !isSyncing,
+                        colors = ButtonDefaults.buttonColors(containerColor = SurfaceDark)
+                    ) {
+                        if (isSyncing) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                color = CyanAccent,
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("同步中...", color = CyanAccent)
+                        } else {
+                            Icon(Icons.Default.Sync, contentDescription = "同步", tint = CyanAccent, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("同步全部", color = CyanAccent)
+                        }
+                    }
+                }
+            }
+
+            // 備份與還原按鈕
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = onManualBackup,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("💾 立即備份設定", color = CyanAccent, fontSize = 12.sp)
+                    }
+                    OutlinedButton(
+                        onClick = onManualRestore,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("🔄 從檔案還原", color = CyanAccent, fontSize = 12.sp)
+                    }
+                }
+            }
+
+            if (subscriptions.isEmpty()) {
+                item {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "尚未加入任何雲端資料夾\n點擊上方「➕ 新增監控雲端資料夾」貼上連結即可連續播放資料夾音訊",
+                            color = TextSecondary,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            fontSize = 13.sp
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("找不到先前的雲端資料夾？", color = AmberAccent, fontSize = 13.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                                    Text("若曾備份過，點擊此處立即從備份檔案快速還原", color = TextSecondary, fontSize = 11.sp)
+                                }
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Button(
+                                    onClick = onManualRestore,
+                                    colors = ButtonDefaults.buttonColors(containerColor = AmberAccent),
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                                ) {
+                                    Text("📂 還原", color = BgDark, fontSize = 12.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                items(subscriptions, key = { it.id }) { sub ->
                     val targetGroupName = groups.find { it.id == sub.targetPlaylistGroupId }?.name ?: "預設清單"
                     Row(
                         modifier = Modifier
