@@ -415,82 +415,126 @@ fun YouTubeScreen(
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Row(
+                            Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                                    .padding(12.dp)
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.Subscriptions,
-                                    contentDescription = "頻道",
-                                    tint = RedAccent,
-                                    modifier = Modifier.size(28.dp)
-                                )
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Column(modifier = Modifier.weight(1f)) {
+                                // 上半部：圖示 + 頻道名稱 + 操作按鈕群
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Subscriptions,
+                                        contentDescription = "頻道",
+                                        tint = RedAccent,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(10.dp))
                                     Text(
                                         text = sub.name,
                                         color = TextPrimary,
-                                        fontSize = 14.sp,
+                                        fontSize = 15.sp,
                                         fontWeight = androidx.compose.ui.text.font.FontWeight.Medium,
-                                        maxLines = 1
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f)
                                     )
-                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
                                     Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.clickable {
+                                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        IconButton(
+                                            onClick = { onSyncSingleChannel?.invoke(sub.id) },
+                                            enabled = !isSyncing,
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Sync,
+                                                contentDescription = "檢查此頻道新影片",
+                                                tint = RedAccent,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                        IconButton(
+                                            onClick = {
+                                                renameTargetId = sub.id
+                                                renameTargetName = sub.name
+                                                renameDialogTitle = "修改頻道名稱 / 自訂備註"
+                                                showRenameDialog = true
+                                            },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Edit,
+                                                contentDescription = "修改名稱",
+                                                tint = RedAccent,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                        IconButton(
+                                            onClick = { onDeleteSubscription(sub.id) },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Delete,
+                                                contentDescription = "刪除追蹤",
+                                                tint = RedAccent.copy(alpha = 0.85f),
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                // 中間：收納清單徽章（滿寬整行呈現，保證同一行絕不落字）
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = SurfaceDark,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
                                             changeGroupSubId = sub.id
                                             changeGroupSubName = sub.name
                                             showChangeGroupDialog = true
                                         }
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
                                     ) {
-                                        Icon(Icons.Default.QueueMusic, contentDescription = null, tint = RedAccent, modifier = Modifier.size(13.dp))
-                                        Spacer(modifier = Modifier.width(3.dp))
+                                        Icon(
+                                            imageVector = Icons.Default.QueueMusic,
+                                            contentDescription = null,
+                                            tint = RedAccent,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
                                         Text(
                                             text = "收納至: $targetGroupName (點擊變更)",
                                             color = RedAccent,
                                             fontSize = 11.sp,
-                                            fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+                                            fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                                            maxLines = 1,
+                                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                                         )
                                     }
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        text = if (sub.sinceTimestamp != null) "⚡ 時間過濾：開啟 (只收新片)" else "✦ 收錄全部近期影片",
-                                        color = if (sub.sinceTimestamp != null) RedAccent else CyanAccent,
-                                        fontSize = 10.sp
-                                    )
                                 }
-                                // 單一頻道檢查新片按鈕
-                                IconButton(
-                                    onClick = { onSyncSingleChannel?.invoke(sub.id) },
-                                    enabled = !isSyncing
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Sync,
-                                        contentDescription = "檢查此頻道新影片",
-                                        tint = RedAccent
-                                    )
-                                }
-                                IconButton(onClick = {
-                                    renameTargetId = sub.id
-                                    renameTargetName = sub.name
-                                    renameDialogTitle = "修改頻道名稱 / 自訂備註"
-                                    showRenameDialog = true
-                                }) {
-                                    Icon(
-                                        imageVector = Icons.Default.Edit,
-                                        contentDescription = "修改名稱",
-                                        tint = RedAccent
-                                    )
-                                }
-                                IconButton(onClick = { onDeleteSubscription(sub.id) }) {
-                                    Icon(
-                                        imageVector = Icons.Default.Delete,
-                                        contentDescription = "刪除追蹤",
-                                        tint = RedAccent.copy(alpha = 0.8f)
-                                    )
-                                }
+
+                                Spacer(modifier = Modifier.height(4.dp))
+
+                                // 下方：時間過濾狀態
+                                Text(
+                                    text = if (sub.sinceTimestamp != null) "⚡ 時間過濾：開啟 (只收新片)" else "✦ 收錄全部近期影片",
+                                    color = if (sub.sinceTimestamp != null) RedAccent else CyanAccent,
+                                    fontSize = 10.sp,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                    modifier = Modifier.padding(horizontal = 4.dp)
+                                )
                             }
                         }
                     }
@@ -736,74 +780,113 @@ fun YouTubeScreen(
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Row(
+                            Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                                    .padding(12.dp)
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.PlaylistPlay,
-                                    contentDescription = "播放清單",
-                                    tint = AmberAccent,
-                                    modifier = Modifier.size(28.dp)
-                                )
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Column(modifier = Modifier.weight(1f)) {
+                                // 上半部：圖示 + 清單名稱 + 操作按鈕群
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.PlaylistPlay,
+                                        contentDescription = "播放清單",
+                                        tint = AmberAccent,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(10.dp))
                                     Text(
                                         text = pl.name,
                                         color = TextPrimary,
-                                        fontSize = 14.sp,
+                                        fontSize = 15.sp,
                                         fontWeight = androidx.compose.ui.text.font.FontWeight.Medium,
-                                        maxLines = 1
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f)
                                     )
-                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
                                     Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.clickable {
+                                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        IconButton(
+                                            onClick = { onSyncSinglePlaylist?.invoke(pl.id) ?: onImportPlaylist(pl.id, pl.name, pl.targetPlaylistGroupId, null) },
+                                            enabled = !isSyncing,
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Sync,
+                                                contentDescription = "檢查此清單新曲目",
+                                                tint = AmberAccent,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                        IconButton(
+                                            onClick = {
+                                                renameTargetId = pl.id
+                                                renameTargetName = pl.name
+                                                renameDialogTitle = "修改清單名稱 / 自訂備註"
+                                                showRenameDialog = true
+                                            },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Edit,
+                                                contentDescription = "修改名稱",
+                                                tint = AmberAccent,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                        IconButton(
+                                            onClick = { onDeleteSubscription(pl.id) },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Delete,
+                                                contentDescription = "移除紀錄",
+                                                tint = RedAccent.copy(alpha = 0.85f),
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                // 下半部：收納播放清單徽章（滿寬整行呈現，保證同一行絕不落字）
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = SurfaceDark,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
                                             changeGroupSubId = pl.id
                                             changeGroupSubName = pl.name
                                             showChangeGroupDialog = true
                                         }
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
                                     ) {
-                                        Icon(Icons.Default.QueueMusic, contentDescription = null, tint = AmberAccent, modifier = Modifier.size(13.dp))
-                                        Spacer(modifier = Modifier.width(3.dp))
+                                        Icon(
+                                            imageVector = Icons.Default.QueueMusic,
+                                            contentDescription = null,
+                                            tint = AmberAccent,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
                                         Text(
                                             text = "收納至: $targetGroupName (點擊變更)",
                                             color = AmberAccent,
                                             fontSize = 11.sp,
-                                            fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+                                            fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                                            maxLines = 1,
+                                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                                         )
                                     }
-                                }
-                                IconButton(onClick = {
-                                    renameTargetId = pl.id
-                                    renameTargetName = pl.name
-                                    renameDialogTitle = "修改清單名稱 / 自訂備註"
-                                    showRenameDialog = true
-                                }) {
-                                    Icon(
-                                        imageVector = Icons.Default.Edit,
-                                        contentDescription = "修改名稱",
-                                        tint = AmberAccent
-                                    )
-                                }
-                                IconButton(
-                                    onClick = { onSyncSinglePlaylist?.invoke(pl.id) ?: onImportPlaylist(pl.id, pl.name, pl.targetPlaylistGroupId, null) },
-                                    enabled = !isSyncing
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Sync,
-                                        contentDescription = "檢查此清單新曲目",
-                                        tint = AmberAccent
-                                    )
-                                }
-                                IconButton(onClick = { onDeleteSubscription(pl.id) }) {
-                                    Icon(
-                                        imageVector = Icons.Default.Delete,
-                                        contentDescription = "移除紀錄",
-                                        tint = RedAccent.copy(alpha = 0.8f)
-                                    )
                                 }
                             }
                         }

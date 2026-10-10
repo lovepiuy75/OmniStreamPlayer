@@ -350,53 +350,118 @@ fun GDriveScreen(
             } else {
                 items(subscriptions, key = { it.id }) { sub ->
                     val targetGroupName = groups.find { it.id == sub.targetPlaylistGroupId }?.name ?: "預設清單"
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(CardDark)
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = CardDark),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Icon(Icons.Default.CloudDone, contentDescription = null, tint = CyanAccent)
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(sub.name, color = TextPrimary, fontSize = 15.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Medium)
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.clickable {
-                                    changeGroupFolderId = sub.id
-                                    changeGroupFolderName = sub.name
-                                    showChangeGroupDialog = true
-                                }
-                            ) {
-                                Icon(Icons.Default.QueueMusic, contentDescription = null, tint = CyanAccent, modifier = Modifier.size(13.dp))
-                                Spacer(modifier = Modifier.width(3.dp))
-                                Text(
-                                    text = "收納至: $targetGroupName (點擊變更)",
-                                    color = CyanAccent,
-                                    fontSize = 11.sp,
-                                    fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
-                                )
-                            }
-                        }
-                        // 單一資料夾同步按鈕
-                        IconButton(
-                            onClick = { onSyncFolder?.invoke(sub.id) },
-                            enabled = !isSyncing
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp)
                         ) {
-                            Icon(Icons.Default.Sync, contentDescription = "同步此資料夾", tint = CyanAccent)
-                        }
-                        IconButton(onClick = {
-                            renameTargetId = sub.id
-                            renameTargetName = sub.name
-                            showRenameDialog = true
-                        }) {
-                            Icon(Icons.Default.Edit, contentDescription = "自訂加註/修改名稱", tint = CyanAccent)
-                        }
-                        IconButton(onClick = { onDeleteFolder(sub.id) }) {
-                            Icon(Icons.Default.Delete, contentDescription = "刪除", tint = RedAccent.copy(alpha = 0.8f))
+                            // 上半部：圖示 + 名稱 + 操作按鈕群
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.CloudDone,
+                                    contentDescription = null,
+                                    tint = CyanAccent,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text(
+                                    text = sub.name,
+                                    color = TextPrimary,
+                                    fontSize = 15.sp,
+                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Medium,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    IconButton(
+                                        onClick = { onSyncFolder?.invoke(sub.id) },
+                                        enabled = !isSyncing,
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Sync,
+                                            contentDescription = "同步此資料夾",
+                                            tint = CyanAccent,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                    IconButton(
+                                        onClick = {
+                                            renameTargetId = sub.id
+                                            renameTargetName = sub.name
+                                            showRenameDialog = true
+                                        },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Edit,
+                                            contentDescription = "自訂加註/修改名稱",
+                                            tint = CyanAccent,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                    IconButton(
+                                        onClick = { onDeleteFolder(sub.id) },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Delete,
+                                            contentDescription = "刪除",
+                                            tint = RedAccent.copy(alpha = 0.85f),
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            // 下半部：收納播放清單徽章（滿寬整行呈現，保證在同一行絕對不落字）
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = SurfaceDark,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        changeGroupFolderId = sub.id
+                                        changeGroupFolderName = sub.name
+                                        showChangeGroupDialog = true
+                                    }
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.QueueMusic,
+                                        contentDescription = null,
+                                        tint = CyanAccent,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "收納至: $targetGroupName (點擊變更)",
+                                        color = CyanAccent,
+                                        fontSize = 11.sp,
+                                        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
                         }
                     }
                 }
